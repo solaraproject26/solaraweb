@@ -1056,7 +1056,7 @@ export default function App() {
       )}
 
       {/* Tab content */}
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         {tab==="chat" &&<ChatTab/>}
         {tab==="today"&&<TodayTab setOverdueBadge={setOverdueBadge}/>}
         {tab==="diary"&&<DiaryTab/>}
