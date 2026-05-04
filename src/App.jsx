@@ -237,6 +237,75 @@ function Splash({ onEnter }) {
   );
 }
 
+// ─── Blow Up Box ───────────────────────────────────────────────────────────────
+function BlowUpBox() {
+  const [open,    setOpen]    = useState(false);
+  const [text,    setText]    = useState("");
+  const [phase,   setPhase]   = useState("idle"); // idle | writing | blowing | done
+  const taRef = useRef(null);
+
+  const openBox = () => { setOpen(true); setPhase("writing"); setText(""); setTimeout(()=>taRef.current?.focus(),80); };
+
+  const blowUp = () => {
+    if (!text.trim()) return;
+    setPhase("blowing");
+    setTimeout(()=>{ setText(""); setPhase("done"); }, 600);
+    setTimeout(()=>{ setPhase("idle"); setOpen(false); }, 1800);
+  };
+
+  if (!open) return (
+    <div style={{position:"relative",zIndex:2,background:C.white,borderTop:`1px solid ${C.fogD}`,padding:"6px 14px"}}>
+      <button onClick={openBox}
+        style={{width:"100%",padding:"8px 12px",background:"transparent",border:`1.5px dashed ${C.primaryB}`,borderRadius:"10px",fontSize:"13px",fontWeight:500,color:C.textL,cursor:"pointer",fontFamily:SANS,textAlign:"left"}}>
+        💭 Get it off your chest...
+      </button>
+    </div>
+  );
+
+  return (
+    <div style={{position:"relative",zIndex:2,background:"#FFF8F9",borderTop:`1px solid ${C.primaryB}`,padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px"}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <p style={{margin:0,fontSize:"12px",fontWeight:600,color:C.textL,fontFamily:SANS,letterSpacing:"0.05em",textTransform:"uppercase"}}>
+          {phase==="done" ? "✓ Gone." : "Get it out — no one will see this"}
+        </p>
+        <button onClick={()=>{setOpen(false);setPhase("idle");setText("");}}
+          style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"18px",lineHeight:1,padding:"0 4px"}}>×</button>
+      </div>
+
+      {phase!=="done" && (
+        <>
+          <textarea ref={taRef} value={text} onChange={e=>setText(e.target.value)}
+            placeholder="Write it here. Anything. Get it all out..."
+            style={{
+              width:"100%", minHeight:"72px", border:`1.5px solid ${C.primaryB}`,
+              borderRadius:"10px", padding:"10px 12px", fontSize:"15px", color:C.text,
+              fontFamily:SANS, resize:"none", outline:"none",
+              background: phase==="blowing" ? "transparent" : "#FFF0F3",
+              lineHeight:1.6, boxSizing:"border-box",
+              opacity: phase==="blowing" ? 0 : 1,
+              transform: phase==="blowing" ? "scale(1.04)" : "scale(1)",
+              transition: phase==="blowing" ? "all 0.5s ease-out" : "none",
+            }}/>
+          <button onClick={blowUp} disabled={!text.trim()||phase==="blowing"}
+            style={{width:"100%",padding:"10px",background:text.trim()?C.primary:C.fogD,border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:700,color:text.trim()?"#fff":C.textL,cursor:text.trim()?"pointer":"default",fontFamily:SANS,
+              transform:phase==="blowing"?"scale(0.96)":"scale(1)",
+              transition:"transform 0.3s",
+            }}>
+            💥 Let it go
+          </button>
+        </>
+      )}
+
+      {phase==="done" && (
+        <div style={{textAlign:"center",padding:"8px 0",animation:"fadeOut 1s ease-out 0.6s forwards",opacity:1}}>
+          <p style={{margin:0,fontSize:"20px"}}>💨</p>
+          <p style={{margin:"4px 0 0",fontSize:"14px",color:C.textL,fontFamily:SANS}}>Gone. Not stored. Not sent. Just gone.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Chat ──────────────────────────────────────────────────────────────────────
 function ChatTab() {
   const [msgs,      setMsgs]      = useState(()=>load("sw_msgs",[]));
@@ -322,7 +391,7 @@ function ChatTab() {
                 <GeishaIcon size={24}/>
               </div>
             )}
-            <div style={{maxWidth:"80%",background:m.role==="user"?C.primary:C.white,border:m.role==="user"?"none":`1.5px solid ${C.border}`,borderRadius:m.role==="user"?"18px 18px 4px 18px":"4px 18px 18px 18px",padding:m.image?"8px":"13px 17px",fontSize:"17px",lineHeight:1.9,color:m.role==="user"?"#fff":C.text,whiteSpace:"pre-wrap",fontFamily:SANS}}>
+            <div style={{maxWidth:"80%",background:m.role==="user"?C.primary:C.white,border:m.role==="user"?"none":`1.5px solid ${C.border}`,borderRadius:m.role==="user"?"16px 16px 4px 16px":"4px 16px 16px 16px",padding:m.image?"8px":"11px 15px",fontSize:"16px",lineHeight:1.65,color:m.role==="user"?"#fff":C.text,whiteSpace:"pre-wrap",fontFamily:SANS}}>
               {m.image&&<img src={m.image} alt="shared" style={{width:"100%",maxHeight:"220px",objectFit:"cover",borderRadius:"10px",display:"block",marginBottom:m.content?"8px":0}}/>}
               {m.content&&<span>{m.content}</span>}
             </div>
@@ -349,6 +418,10 @@ function ChatTab() {
           <button onClick={()=>setPendingImg(null)} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textM,fontSize:"22px",lineHeight:1}}>×</button>
         </div>
       )}
+
+      {/* 💥 Blow Up Box */}
+      <BlowUpBox/>
+
       <div style={{position:"relative",background:C.white,borderTop:`1.5px solid ${C.border}`,padding:"12px 14px 14px",zIndex:2}}>
         <div style={{display:"flex",gap:"10px",alignItems:"flex-end",background:C.fog,border:`2px solid ${focused?C.primaryM:C.border}`,borderRadius:"14px",padding:"8px 8px 8px 12px",transition:"border-color 0.2s"}}>
           <button onClick={()=>fileRef.current?.click()} disabled={loading} style={{background:"transparent",border:"none",cursor:"pointer",padding:"6px",color:C.primary,display:"flex",minHeight:"44px",alignItems:"center"}}>
@@ -359,8 +432,8 @@ function ChatTab() {
           <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleImg} style={{display:"none"}}/>
           <textarea ref={taRef} value={input} onChange={e=>{setInput(e.target.value);rz(e);}} onKeyDown={hk}
             onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
-            placeholder="What's on your mind, Wendy?" rows={1}
-            style={{flex:1,resize:"none",border:"none",background:"transparent",padding:"6px 0",fontSize:"17px",lineHeight:1.7,color:C.text,outline:"none",overflowY:"hidden",minHeight:"36px",fontFamily:SANS}}/>
+            placeholder="What's on your mind?" rows={1}
+            style={{flex:1,resize:"none",border:"none",background:"transparent",padding:"5px 0",fontSize:"16px",lineHeight:1.6,color:C.text,outline:"none",overflowY:"hidden",minHeight:"34px",fontFamily:SANS}}/>
           <button onClick={send} disabled={!can}
             style={{padding:"10px 18px",borderRadius:"11px",border:"none",background:can?C.primary:C.fogD,color:can?"#fff":C.textL,fontSize:"16px",fontWeight:700,cursor:can?"pointer":"default",flexShrink:0,fontFamily:SANS,minHeight:"48px"}}>
             Send
@@ -418,23 +491,23 @@ function TodayTab({ setOverdueBadge }) {
   const SELECT_STYLE = {...INPUT_STYLE};
 
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"1.1rem",display:"flex",flexDirection:"column",gap:"1.1rem",WebkitOverflowScrolling:"touch"}}>
+    <div style={{flex:1,overflowY:"auto",padding:"0.75rem",display:"flex",flexDirection:"column",gap:"0.6rem",WebkitOverflowScrolling:"touch"}}>
       <p style={{margin:0,textAlign:"center",fontSize:"15px",color:C.textM,fontWeight:600}}>
         {now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}
       </p>
 
       {/* 7-day mood strip */}
-      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,padding:"14px 16px"}}>
-        <p style={{margin:"0 0 10px",fontSize:"14px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>7-day mood</p>
-        <div style={{display:"flex",gap:"4px",justifyContent:"space-between"}}>
+      <div style={{background:C.white,borderRadius:"12px",border:`1.5px solid ${C.border}`,padding:"10px 12px"}}>
+        <p style={{margin:"0 0 8px",fontSize:"13px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>7-day mood</p>
+        <div style={{display:"flex",gap:"3px",justifyContent:"space-between"}}>
           {moodStrip.map(d=>{
             const m = MOODS.find(x=>x.score===d.score);
             return (
-              <div key={d.key} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
-                <div style={{width:"32px",height:"32px",borderRadius:"50%",background:m?m.color+"30":C.fogD,border:`2px solid ${d.isToday?C.primary:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"16px"}}>
+              <div key={d.key} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:"3px"}}>
+                <div style={{width:"26px",height:"26px",borderRadius:"50%",background:m?m.color+"30":C.fogD,border:`2px solid ${d.isToday?C.primary:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px"}}>
                   {m?m.emoji:"·"}
                 </div>
-                <span style={{fontSize:"10px",color:d.isToday?C.primary:C.textL,fontWeight:d.isToday?700:400,fontFamily:SANS}}>{d.label}</span>
+                <span style={{fontSize:"9px",color:d.isToday?C.primary:C.textL,fontWeight:d.isToday?700:400,fontFamily:SANS}}>{d.label}</span>
               </div>
             );
           })}
@@ -473,7 +546,7 @@ function TodayTab({ setOverdueBadge }) {
         )}
 
         {/* Scrollable med list */}
-        <ScrollBox maxHeight={320}>
+        <ScrollBox maxHeight={420}>
           {["Morning","Afternoon","Evening","Night"].map(period=>{
             const pm = meds.filter(m=>m.time===period);
             if (!pm.length) return null;
@@ -547,17 +620,17 @@ function TodayTab({ setOverdueBadge }) {
       </div>
 
       {/* Mood check-in */}
-      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,padding:"16px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:"10px",marginBottom:"14px"}}>
-          <span style={{fontSize:"22px"}}>🌤</span>
-          <p style={{margin:0,fontSize:"17px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>How are you feeling?</p>
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,padding:"12px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
+          <span style={{fontSize:"20px"}}>🌤</span>
+          <p style={{margin:0,fontSize:"15px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>How are you feeling?</p>
         </div>
-        <div style={{display:"flex",gap:"6px",justifyContent:"space-between",marginBottom:"12px"}}>
+        <div style={{display:"flex",gap:"6px",justifyContent:"space-between",marginBottom:"10px"}}>
           {MOODS.map(m=>(
             <button key={m.score} onClick={()=>setMood(m.score)}
-              style={{flex:1,padding:"10px 4px",borderRadius:"12px",border:`2.5px solid ${mood===m.score?m.color:C.border}`,background:mood===m.score?m.color+"20":"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",transition:"all 0.15s",minHeight:"72px"}}>
-              <span style={{fontSize:"24px"}}>{m.emoji}</span>
-              <span style={{fontSize:"11px",color:mood===m.score?m.color:C.textL,fontWeight:mood===m.score?700:400,fontFamily:SANS}}>{m.label}</span>
+              style={{flex:1,padding:"7px 2px",borderRadius:"10px",border:`2.5px solid ${mood===m.score?m.color:C.border}`,background:mood===m.score?m.color+"20":"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",transition:"all 0.15s",minHeight:"58px"}}>
+              <span style={{fontSize:"22px"}}>{m.emoji}</span>
+              <span style={{fontSize:"10px",color:mood===m.score?m.color:C.textL,fontWeight:mood===m.score?700:400,fontFamily:SANS}}>{m.label}</span>
             </button>
           ))}
         </div>
@@ -849,7 +922,7 @@ function TodoTab() {
   const add          = () => { if(!input.trim()) return; setTodos(prev=>[...prev,{id:uid(),text:input.trim(),done:false,pinned:false,keepUntilDone:false}]); setInput(""); };
   const addStudio    = () => { if(!sInput.trim()) return; setStudio(prev=>[...prev,{id:uid(),text:sInput.trim(),done:false}]); setSInput(""); };
   const remove       = id => { if(confirm_del("Remove this task?")) setTodos(prev=>prev.filter(t=>t.id!==id)); };
-  const removeStudio = id => { if(confirm_del("Remove this studio task?")) setStudio(prev=>prev.filter(t=>t.id!==id)); };
+  const removeStudio = id => setStudio(prev=>prev.filter(t=>t.id!==id));
   const reset        = () => { if(confirm_del("Reset today's list to defaults?")) setTodos(DEFAULT_TODOS); };
 
   const doneCount = todos.filter(t=>t.done).length;
@@ -867,17 +940,34 @@ function TodoTab() {
     </div>
   );
 
-  const StudioRow = ({t, idx}) => (
-    <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 14px",background:t.done?"#EAF6F0":"transparent",borderTop:idx>0?`1px solid ${C.fogD}`:"none",minHeight:"44px"}}>
-      <button onClick={()=>toggleStudio(t.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
-        <div style={{width:"22px",height:"22px",borderRadius:"6px",border:`2px solid ${t.done?C.studio:C.border}`,background:t.done?C.studio:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-          {t.done&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-        </div>
-      </button>
-      <p style={{margin:0,flex:1,fontSize:"15px",color:t.done?C.textL:C.text,textDecoration:t.done?"line-through":"none",lineHeight:1.5}}>{t.text}</p>
-      <button onClick={()=>removeStudio(t.id)} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"20px",padding:"0 4px",lineHeight:1,minWidth:"30px",textAlign:"center"}}>×</button>
-    </div>
-  );
+  const StudioRow = ({t, idx}) => {
+    const [confirming, setConfirming] = useState(false);
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"7px 12px",background:t.done?"#EAF6F0":"transparent",borderTop:idx>0?`1px solid ${C.fogD}`:"none",minHeight:"40px"}}>
+        <button onClick={()=>toggleStudio(t.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
+          <div style={{width:"22px",height:"22px",borderRadius:"6px",border:`2px solid ${t.done?C.studio:C.border}`,background:t.done?C.studio:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+            {t.done&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          </div>
+        </button>
+        <p style={{margin:0,flex:1,fontSize:"15px",color:t.done?C.textL:C.text,textDecoration:t.done?"line-through":"none",lineHeight:1.4}}>{t.text}</p>
+        {confirming ? (
+          <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
+            <button onClick={()=>removeStudio(t.id)}
+              style={{background:C.red,border:"none",borderRadius:"6px",padding:"3px 8px",fontSize:"12px",fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:SANS}}>
+              Delete
+            </button>
+            <button onClick={()=>setConfirming(false)}
+              style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"3px 7px",fontSize:"12px",color:C.textL,cursor:"pointer",fontFamily:SANS}}>
+              No
+            </button>
+          </div>
+        ) : (
+          <button onClick={()=>setConfirming(true)}
+            style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"20px",padding:"0 4px",lineHeight:1,minWidth:"28px",textAlign:"center"}}>×</button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:"0.85rem",display:"flex",flexDirection:"column",gap:"0.75rem",WebkitOverflowScrolling:"touch"}}>
@@ -929,7 +1019,7 @@ function TodoTab() {
       </div>
 
       {/* ─── Sunday Mills Studio ─────────────────────────────── */}
-      <div style={{background:C.studioL,borderRadius:"14px",border:`1.5px solid ${C.studioB}`,overflow:"hidden",marginTop:"4px"}}>
+      <div style={{background:C.studioL,borderRadius:"14px",border:`1.5px solid ${C.studioB}`,overflow:"visible",marginTop:"4px"}}>
         <div style={{padding:"11px 14px",borderBottom:`1px solid ${C.studioB}`,display:"flex",alignItems:"center",gap:"10px"}}>
           <span style={{fontSize:"20px"}}>🔧</span>
           <div style={{flex:1}}>
@@ -938,14 +1028,16 @@ function TodoTab() {
           </div>
         </div>
 
-        <ScrollBox maxHeight={320}>
-          {studio.length===0&&(
-            <div style={{padding:"20px 16px",textAlign:"center"}}>
-              <p style={{margin:0,fontSize:"15px",color:"#4A6278"}}>No repairs logged — add one below</p>
-            </div>
-          )}
-          {studio.map((t,i)=><StudioRow key={t.id} t={t} idx={i}/>)}
-        </ScrollBox>
+        <div style={{background:C.white,overflow:"hidden",borderRadius:"0 0 0 0"}}>
+          <ScrollBox maxHeight={220}>
+            {studio.length===0&&(
+              <div style={{padding:"14px 16px",textAlign:"center"}}>
+                <p style={{margin:0,fontSize:"14px",color:"#4A6278"}}>No repairs logged — add one below</p>
+              </div>
+            )}
+            {studio.map((t,i)=><StudioRow key={t.id} t={t} idx={i}/>)}
+          </ScrollBox>
+        </div>
 
         {/* Add studio task */}
         <div style={{padding:"10px 12px",borderTop:`1px solid ${C.studioB}`,display:"flex",gap:"8px"}}>
@@ -1078,7 +1170,7 @@ export default function App() {
         ))}
       </div>
 
-      <style>{`@keyframes pulse{0%,80%,100%{opacity:.25;transform:scale(.75)}40%{opacity:1;transform:scale(1)}}*{-webkit-tap-highlight-color:transparent}`}</style>
+      <style>{`@keyframes pulse{0%,80%,100%{opacity:.25;transform:scale(.75)}40%{opacity:1;transform:scale(1)}}@keyframes fadeOut{0%{opacity:1}100%{opacity:0}}*{-webkit-tap-highlight-color:transparent}`}</style>
     </div>
   );
 }
