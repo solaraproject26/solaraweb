@@ -423,7 +423,8 @@ function ChatTab() {
   const [tidying,     setTidying]     = useState(false);
   const [tidyErr,     setTidyErr]     = useState(null);
   const [clearPending,setClearPending]= useState(false);
-
+  const [tidyResult,  setTidyResult]  = useState(null);
+  
   const bottomRef   = useRef(null);
   const taRef       = useRef(null);
   const fileRef     = useRef(null);
@@ -458,7 +459,7 @@ function ChatTab() {
     if (!SR) return;
     const r = new SR();
     r.lang="en-GB"; r.continuous=false; r.interimResults=false;
-    r.onresult = e => { const t=e.results[0][0].transcript; setInput(prev=>prev?prev+" "+t:t); setListening(false); };
+    r.onresult = e => { const t=e.results[0][0].transcript; setTidyResult(prev=>prev?prev+" "+t:t); setListening(false); };
     r.onerror = ()=>setListening(false);
     r.onend   = ()=>setListening(false);
     recognRef.current=r; r.start(); setListening(true);
@@ -467,7 +468,7 @@ function ChatTab() {
 
   const tidyUp = async () => {
     if (!input.trim()||tidying) return;
-    setTidyErr(null); setTidying(true);
+    setTidyErr(null); setTidying(true); setTidyResult(null);
     try {
       const res  = await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
         body:JSON.stringify({system:TIDY_PROMPT,messages:[{role:"user",content:input.trim()}],stream:false})});
@@ -625,17 +626,41 @@ function ChatTab() {
           </div>
         )}
 
-        {apiError&&<p style={{textAlign:"center",fontSize:"13px",color:C.red,margin:0,padding:"6px 12px",background:C.redL,borderRadius:"8px",border:`1px solid ${C.redB}`}}>⚠ {apiError}</p>}
-        <div ref={bottomRef}/>
-      </div>
-
-      {pendingImg&&(
-        <div style={{position:"relative",background:C.white,borderTop:`1.5px solid ${C.border}`,padding:"8px 14px",display:"flex",alignItems:"center",gap:"12px",zIndex:2}}>
-          <img src={pendingImg.dataUrl} alt="preview" style={{width:"42px",height:"42px",borderRadius:"8px",objectFit:"cover"}}/>
-          <p style={{margin:0,flex:1,fontSize:"14px",color:C.text}}>Photo ready to send</p>
-          <button onClick={()=>setPendingImg(null)} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textM,fontSize:"20px",lineHeight:1}}>×</button>
+      {tidyResult&&(
+        <div style={{position:"relative",zIndex:2,background:C.primaryL,borderTop:`1px solid ${C.primaryB}`,
+          padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <p style={{margin:0,fontSize:"11px",fontWeight:700,color:C.textL,fontFamily:SANS,
+              textTransform:"uppercase",letterSpacing:"0.06em"}}>Tidy result</p>
+            <button onClick={()=>setTidyResult(null)}
+              style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"18px",lineHeight:1}}>×</button>
+          </div>
+          <p style={{margin:0,fontSize:"14px",color:C.text,fontFamily:SANS,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{tidyResult}</p>
+          <div style={{display:"flex",gap:"8px"}}>
+            <button onClick={()=>{setInput(tidyResult);setTidyResult(null);}}
+              style={{flex:1,padding:"8px",background:C.primary,border:"none",borderRadius:"8px",
+                fontSize:"13px",fontWeight:600,color:"#fff",cursor:"pointer",fontFamily:SANS}}>
+              Use this
+            </button>
+            <button onClick={()=>setTidyResult(null)}
+              style={{flex:1,padding:"8px",background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"8px",
+                fontSize:"13px",fontWeight:600,color:C.textM,cursor:"pointer",fontFamily:SANS}}>
+              Keep original
+            </button>
+          </div>
         </div>
       )}
+      {input.trim()&&!tidyResult&&(
+        <div style={{position:"relative",zIndex:2,background:C.white,padding:"4px 14px 0",display:"flex",gap:"8px",alignItems:"center"}}>
+          <button onClick={tidyUp} disabled={tidying}
+            style={{fontSize:"12px",fontWeight:600,padding:"5px 12px",borderRadius:"8px",border:`1.5px solid ${C.primaryB}`,
+              background:tidying?C.fogD:C.primaryL,color:tidying?C.textL:C.primary,cursor:tidying?"default":"pointer",fontFamily:SANS}}>
+            {tidying?"Tidying...":"✨ Tidy up"}
+          </button>
+          {tidyErr&&<p style={{margin:0,fontSize:"11px",color:C.red,fontFamily:SANS}}>{tidyErr}</p>}
+        </div>
+      )}
+      
 
       <BlowUpBox/>
 
