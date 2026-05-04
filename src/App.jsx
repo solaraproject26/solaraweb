@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const SANS  = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
 const SERIF = "'Georgia', 'Times New Roman', serif";
@@ -36,11 +36,11 @@ const DEFAULT_CRISIS = [
 ];
 
 const DEFAULT_TEAM = [
-  { id:"tm1", role:"Nurses",      people:"Abdul, Gideon, Helen, Jessica" },
-  { id:"tm2", role:"Doctors",     people:"Dr Bertram, Dr Davies" },
-  { id:"tm3", role:"Peer Support",people:"Vanessa" },
-  { id:"tm4", role:"Base",        people:"Morrison Building, Entrance 4, Springfield Hospital" },
-  { id:"tm5", role:"WHTT hours",  people:"10:30–13:30 and 17:00–20:30" },
+  { id:"tm1", role:"Nurses",       people:"Abdul, Gideon, Helen, Jessica" },
+  { id:"tm2", role:"Doctors",      people:"Dr Bertram, Dr Davies" },
+  { id:"tm3", role:"Peer Support", people:"Vanessa" },
+  { id:"tm4", role:"Base",         people:"Morrison Building, Entrance 4, Springfield Hospital" },
+  { id:"tm5", role:"WHTT hours",   people:"10:30–13:30 and 17:00–20:30" },
 ];
 
 const DEFAULT_TIPS = [
@@ -53,16 +53,16 @@ const DEFAULT_TIPS = [
 ];
 
 const DEFAULT_TODOS = [
-  { id:"t1", text:"Eat breakfast before morning meds", done:false, pinned:true,  keepUntilDone:false },
-  { id:"t2", text:"Take morning medication",           done:false, pinned:true,  keepUntilDone:false },
-  { id:"t3", text:"Open the curtains",                 done:false, pinned:true,  keepUntilDone:false },
-  { id:"t4", text:"Drink a glass of water",            done:false, pinned:false, keepUntilDone:false },
-  { id:"t5", text:"Take evening medication",           done:false, pinned:true,  keepUntilDone:false },
+  { id:"t1", text:"Eat breakfast before morning meds", done:false, pinned:true  },
+  { id:"t2", text:"Take morning medication",           done:false, pinned:true  },
+  { id:"t3", text:"Open the curtains",                 done:false, pinned:true  },
+  { id:"t4", text:"Drink a glass of water",            done:false, pinned:false },
+  { id:"t5", text:"Take evening medication",           done:false, pinned:true  },
 ];
 
 const DEFAULT_STUDIO = [
-  { id:"s1", text:"Check and tighten all door hinges",   done:false },
-  { id:"s2", text:"Inspect window seals for draughts",   done:false },
+  { id:"s1", text:"Check and tighten all door hinges", done:false },
+  { id:"s2", text:"Inspect window seals for draughts", done:false },
 ];
 
 const OPENING = {
@@ -89,12 +89,46 @@ INTERACTION & PLAYBOOK:
 
 Persona: SolAraWeb — warm, gentle, unhurried. Like a calm friend who sits with you. Tender language. Never clinical.`;
 
+const TIDY_PROMPT = `You are a message assistant for Wendy. She has dictated or typed a rough message that needs tidying up before she sends it.
+
+Clean it up: fix grammar, punctuation and clarity. Keep her voice warm and natural. Keep it concise. Do not add anything she did not say. Do not change her meaning. Return only the tidied message — nothing else, no explanation, no preamble.`;
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 const load  = (k,fb) => { try { const v=localStorage.getItem(k); return v?JSON.parse(v):fb; } catch { return fb; } };
 const save  = (k,v)  => { try { localStorage.setItem(k,JSON.stringify(v)); } catch {} };
 const today = ()     => new Date().toISOString().split("T")[0];
 const uid   = ()     => `id_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
-const confirm_del = (msg) => window.confirm(msg || "Delete this? This cannot be undone.");
+
+// ─── Inline confirm hook ────────────────────────────────────────────────────────
+// Replaces window.confirm() which is blocked on iOS mobile browsers
+function useInlineConfirm(onConfirm) {
+  const [pending, setPending] = useState(false);
+  const confirm = () => {
+    if (pending) { onConfirm(); setPending(false); }
+    else { setPending(true); setTimeout(()=>setPending(false), 3000); }
+  };
+  return { pending, confirm };
+}
+
+// Inline confirm button pair — tap once shows "Sure?", tap again confirms
+function ConfirmBtn({ onConfirm, label="×", confirmLabel="Sure?", style={} }) {
+  const [pending, setPending] = useState(false);
+  const timerRef = useRef(null);
+  const handleTap = () => {
+    if (pending) { onConfirm(); setPending(false); clearTimeout(timerRef.current); }
+    else { setPending(true); timerRef.current = setTimeout(()=>setPending(false), 3000); }
+  };
+  useEffect(()=>()=>clearTimeout(timerRef.current),[]);
+  return (
+    <button onClick={handleTap}
+      style={{background:pending?C.red:"transparent",border:pending?`1px solid ${C.red}`:"none",borderRadius:"6px",
+        padding:pending?"3px 8px":"0 4px",fontSize:pending?"12px":"20px",fontWeight:pending?700:400,
+        color:pending?"#fff":C.textL,cursor:"pointer",fontFamily:SANS,
+        minWidth:"32px",textAlign:"center",lineHeight:1,transition:"all 0.15s",...style}}>
+      {pending?confirmLabel:label}
+    </button>
+  );
+}
 
 // ─── Geisha Icon ───────────────────────────────────────────────────────────────
 function GeishaIcon({ size=60 }) {
@@ -104,8 +138,7 @@ function GeishaIcon({ size=60 }) {
       <ellipse cx="60" cy="32" rx="26" ry="28" fill={C.navy}/>
       <ellipse cx="60" cy="28" rx="22" ry="20" fill={C.navy}/>
       <line x1="72" y1="18" x2="88" y2="8" stroke={p} strokeWidth="2" strokeLinecap="round"/>
-      <circle cx="88" cy="8" r="4" fill={p}/>
-      <circle cx="82" cy="12" r="2.5" fill={C.primaryM}/>
+      <circle cx="88" cy="8" r="4" fill={p}/><circle cx="82" cy="12" r="2.5" fill={C.primaryM}/>
       <line x1="78" y1="14" x2="92" y2="20" stroke={p} strokeWidth="1.5" strokeLinecap="round"/>
       <circle cx="92" cy="20" r="3" fill={C.primaryM}/>
       <ellipse cx="60" cy="52" rx="19" ry="23" fill="#F5E6D8"/>
@@ -123,8 +156,7 @@ function GeishaIcon({ size=60 }) {
       <circle cx="42" cy="98" r="3" fill={C.primaryM} opacity="0.5"/>
       <circle cx="78" cy="95" r="3" fill={C.primaryM} opacity="0.5"/>
       <path d="M35 92 Q60 96 85 92" stroke={C.navy} strokeWidth="4" strokeLinecap="round" fill="none"/>
-      <circle cx="60" cy="93" r="5" fill={C.navy}/>
-      <circle cx="60" cy="93" r="3" fill={C.primaryM}/>
+      <circle cx="60" cy="93" r="5" fill={C.navy}/><circle cx="60" cy="93" r="3" fill={C.primaryM}/>
     </svg>
   );
 }
@@ -144,28 +176,29 @@ function Bg() {
 }
 
 // ─── Shared components ─────────────────────────────────────────────────────────
-function Tick({ done, size=26 }) {
+function Tick({ done, size=22 }) {
   return (
-    <div style={{width:`${size}px`,height:`${size}px`,borderRadius:"7px",border:`2.5px solid ${done?C.primary:C.border}`,background:done?C.primary:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-      {done && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+    <div style={{width:`${size}px`,height:`${size}px`,borderRadius:"6px",border:`2px solid ${done?C.primary:C.border}`,
+      background:done?C.primary:"transparent",display:"flex",alignItems:"center",justifyContent:"center",
+      flexShrink:0,transition:"all 0.15s"}}>
+      {done&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
     </div>
   );
 }
 
 function Btn({ onClick, disabled, children, variant="primary", small }) {
-  const bg  = disabled ? C.fogD : variant==="primary" ? C.primary : variant==="danger" ? C.red : C.fogD;
-  const col = disabled ? C.textL : (variant==="primary"||variant==="danger") ? "#fff" : C.text;
+  const bg  = disabled?C.fogD:variant==="primary"?C.primary:variant==="danger"?C.red:C.fogD;
+  const col = disabled?C.textL:(variant==="primary"||variant==="danger")?"#fff":C.text;
   return (
     <button onClick={onClick} disabled={disabled}
       style={{padding:small?"8px 12px":"11px 20px",background:bg,border:"none",borderRadius:"10px",
         fontSize:small?"13px":"15px",fontWeight:600,color:col,cursor:disabled?"default":"pointer",
-        fontFamily:SANS,minHeight:small?"36px":"48px",transition:"opacity 0.15s",opacity:disabled?0.5:1}}>
+        fontFamily:SANS,minHeight:small?"40px":"48px",transition:"opacity 0.15s",opacity:disabled?0.5:1}}>
       {children}
     </button>
   );
 }
 
-// Scrollable box wrapper used for all inner lists
 function ScrollBox({ children, maxHeight=300 }) {
   return (
     <div style={{maxHeight:`${maxHeight}px`,overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
@@ -186,8 +219,8 @@ function EditableRow({ label, val, onSave, onDelete, placeholder="" }) {
         style={{padding:"9px 11px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"15px",fontFamily:SANS,color:C.text,outline:"none",background:C.white,resize:"vertical",minHeight:"52px"}}/>
       <div style={{display:"flex",gap:"8px",flexWrap:"wrap"}}>
         <Btn small onClick={()=>{onSave(lv,vv);setEditing(false);}}>Save</Btn>
-        <Btn small variant="ghost" onClick={()=>{ setLv(label); setVv(val); setEditing(false); }}>Cancel</Btn>
-        {onDelete && <Btn small variant="danger" onClick={()=>{ if(confirm_del("Delete this entry?")) { onDelete(); setEditing(false); } }}>Delete</Btn>}
+        <Btn small variant="ghost" onClick={()=>{setLv(label);setVv(val);setEditing(false);}}>Cancel</Btn>
+        {onDelete&&<ConfirmBtn onConfirm={()=>{onDelete();setEditing(false);}} label="Delete" confirmLabel="Yes, delete" style={{minHeight:"40px",padding:"3px 10px",fontSize:"13px",borderRadius:"8px"}}/>}
       </div>
     </div>
   );
@@ -198,7 +231,65 @@ function EditableRow({ label, val, onSave, onDelete, placeholder="" }) {
         <p style={{margin:0,fontSize:"15px",color:C.text,fontFamily:SANS,fontWeight:500,whiteSpace:"pre-line",lineHeight:1.4}}>{val}</p>
       </div>
       <button onClick={()=>setEditing(true)}
-        style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"5px 9px",fontSize:"12px",color:C.textM,cursor:"pointer",flexShrink:0,fontFamily:SANS,minHeight:"32px"}}>
+        style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"5px 9px",fontSize:"12px",color:C.textM,cursor:"pointer",flexShrink:0,fontFamily:SANS,minHeight:"40px"}}>
+        Edit
+      </button>
+    </div>
+  );
+}
+
+// ─── TodoRow & StudioRow defined OUTSIDE TodoTab to prevent remount bug ─────────
+function TodoRow({ t, removable, idx, onToggle, onRemove }) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"7px 12px",
+      background:t.done?C.primaryL:"transparent",borderTop:idx>0?`1px solid ${C.fogD}`:"none",minHeight:"42px"}}>
+      <button onClick={()=>onToggle(t.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
+        <Tick done={t.done} size={22}/>
+      </button>
+      <p style={{margin:0,flex:1,fontSize:"15px",color:t.done?C.textL:C.text,
+        textDecoration:t.done?"line-through":"none",lineHeight:1.5}}>{t.text}</p>
+      {removable&&<ConfirmBtn onConfirm={()=>onRemove(t.id)}/>}
+    </div>
+  );
+}
+
+function StudioRow({ t, idx, onToggle, onRemove }) {
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"7px 12px",
+      background:t.done?"#EAF6F0":"transparent",borderTop:idx>0?`1px solid ${C.fogD}`:"none",minHeight:"42px"}}>
+      <button onClick={()=>onToggle(t.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
+        <div style={{width:"22px",height:"22px",borderRadius:"6px",border:`2px solid ${t.done?C.studio:C.border}`,
+          background:t.done?C.studio:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
+          {t.done&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+        </div>
+      </button>
+      <p style={{margin:0,flex:1,fontSize:"15px",color:t.done?C.textL:C.text,
+        textDecoration:t.done?"line-through":"none",lineHeight:1.4}}>{t.text}</p>
+      <ConfirmBtn onConfirm={()=>onRemove(t.id)} style={{flexShrink:0,whiteSpace:"nowrap"}}/>
+    </div>
+  );
+}
+
+function TipRow({ tip, idx, onSave, onDelete }) {
+  const [editing,setEditing] = useState(false);
+  const [val,setVal] = useState(tip.text);
+  if (editing) return (
+    <div style={{padding:"10px 14px",borderTop:`1px solid ${C.fogD}`,background:C.primaryL,display:"flex",flexDirection:"column",gap:"8px"}}>
+      <textarea value={val} onChange={e=>setVal(e.target.value)}
+        style={{padding:"9px 11px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"15px",fontFamily:SANS,color:C.text,outline:"none",background:C.white,resize:"vertical",minHeight:"60px"}}/>
+      <div style={{display:"flex",gap:"8px"}}>
+        <Btn small onClick={()=>{onSave(val);setEditing(false);}}>Save</Btn>
+        <Btn small variant="ghost" onClick={()=>{setVal(tip.text);setEditing(false);}}>Cancel</Btn>
+        <ConfirmBtn onConfirm={onDelete} label="Delete" confirmLabel="Yes, delete" style={{minHeight:"40px",padding:"3px 10px",fontSize:"13px",borderRadius:"8px"}}/>
+      </div>
+    </div>
+  );
+  return (
+    <div style={{padding:"9px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",gap:"10px",alignItems:"flex-start"}}>
+      <span style={{fontSize:"14px",color:C.primary,fontWeight:700,flexShrink:0,minWidth:"20px",fontFamily:SANS}}>{idx+1}.</span>
+      <p style={{margin:0,flex:1,fontSize:"15px",color:C.text,lineHeight:1.6}}>{tip.text}</p>
+      <button onClick={()=>setEditing(true)}
+        style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"4px 8px",fontSize:"11px",color:C.textM,cursor:"pointer",fontFamily:SANS,flexShrink:0,minHeight:"32px"}}>
         Edit
       </button>
     </div>
@@ -208,18 +299,21 @@ function EditableRow({ label, val, onSave, onDelete, placeholder="" }) {
 // ─── Splash ────────────────────────────────────────────────────────────────────
 function Splash({ onEnter }) {
   return (
-    <div style={{minHeight:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",background:C.fog,padding:"1.5rem",fontFamily:SANS,overflow:"hidden"}}>
+    <div style={{minHeight:"100vh",position:"relative",display:"flex",alignItems:"center",justifyContent:"center",
+      background:C.fog,padding:"1.5rem",fontFamily:SANS,overflow:"hidden"}}>
       <Bg/>
-      <div style={{position:"relative",background:C.white,borderRadius:"20px",border:`1.5px solid ${C.border}`,padding:"2.25rem 2rem",maxWidth:"400px",width:"100%",zIndex:1}}>
+      <div style={{position:"relative",background:C.white,borderRadius:"20px",border:`1.5px solid ${C.border}`,
+        padding:"2.25rem 2rem",maxWidth:"400px",width:"100%",zIndex:1}}>
         <div style={{textAlign:"center",marginBottom:"1.75rem"}}>
-          <div style={{width:"100px",height:"100px",borderRadius:"28px",background:C.primaryL,border:`2px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1.25rem"}}>
+          <div style={{width:"100px",height:"100px",borderRadius:"28px",background:C.primaryL,
+            border:`2px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 1.25rem"}}>
             <GeishaIcon size={78}/>
           </div>
           <h1 style={{margin:"0 0 6px",fontSize:"32px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>SolAraWeb</h1>
           <p style={{margin:0,fontSize:"15px",color:C.textM,fontWeight:500}}>Wendy's Safe Space</p>
         </div>
         <div style={{background:C.primaryL,borderRadius:"14px",border:`1.5px solid ${C.primaryB}`,padding:"1.1rem 1.25rem",marginBottom:"1rem"}}>
-          <p style={{fontSize:"16px",color:C.primary,lineHeight:2,margin:0,fontWeight:500}}>
+          <p style={{fontSize:"16px",color:C.primary,lineHeight:1.9,margin:0,fontWeight:500}}>
             Whatever you're carrying right now, Wendy — you don't have to carry it alone. This space is here whenever you need it.
           </p>
         </div>
@@ -229,7 +323,8 @@ function Splash({ onEnter }) {
           </p>
         </div>
         <button onClick={onEnter}
-          style={{width:"100%",padding:"16px",background:C.primary,border:"none",borderRadius:"14px",fontSize:"18px",fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:SANS,minHeight:"56px"}}>
+          style={{width:"100%",padding:"16px",background:C.primary,border:"none",borderRadius:"14px",
+            fontSize:"18px",fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:SANS,minHeight:"56px"}}>
           I'm ready
         </button>
       </div>
@@ -239,65 +334,66 @@ function Splash({ onEnter }) {
 
 // ─── Blow Up Box ───────────────────────────────────────────────────────────────
 function BlowUpBox() {
-  const [open,    setOpen]    = useState(false);
-  const [text,    setText]    = useState("");
-  const [phase,   setPhase]   = useState("idle"); // idle | writing | blowing | done
-  const taRef = useRef(null);
+  const [open,  setOpen]  = useState(false);
+  const [text,  setText]  = useState("");
+  const [phase, setPhase] = useState("idle");
+  const taRef    = useRef(null);
+  const t1Ref    = useRef(null);
+  const t2Ref    = useRef(null);
+
+  // B8 — clean up timers on unmount
+  useEffect(()=>()=>{ clearTimeout(t1Ref.current); clearTimeout(t2Ref.current); },[]);
 
   const openBox = () => { setOpen(true); setPhase("writing"); setText(""); setTimeout(()=>taRef.current?.focus(),80); };
 
   const blowUp = () => {
     if (!text.trim()) return;
     setPhase("blowing");
-    setTimeout(()=>{ setText(""); setPhase("done"); }, 600);
-    setTimeout(()=>{ setPhase("idle"); setOpen(false); }, 1800);
+    t1Ref.current = setTimeout(()=>{ setText(""); setPhase("done"); }, 600);
+    t2Ref.current = setTimeout(()=>{ setPhase("idle"); setOpen(false); }, 1800);
   };
 
   if (!open) return (
-    <div style={{position:"relative",zIndex:2,background:C.white,borderTop:`1px solid ${C.fogD}`,padding:"6px 14px"}}>
+    <div style={{position:"relative",zIndex:2,background:C.white,borderTop:`1px solid ${C.fogD}`,padding:"5px 14px"}}>
       <button onClick={openBox}
-        style={{width:"100%",padding:"8px 12px",background:"transparent",border:`1.5px dashed ${C.primaryB}`,borderRadius:"10px",fontSize:"13px",fontWeight:500,color:C.textL,cursor:"pointer",fontFamily:SANS,textAlign:"left"}}>
+        style={{width:"100%",padding:"7px 12px",background:"transparent",border:`1.5px dashed ${C.primaryB}`,
+          borderRadius:"10px",fontSize:"13px",fontWeight:500,color:C.textL,cursor:"pointer",fontFamily:SANS,textAlign:"left"}}>
         💭 Get it off your chest...
       </button>
     </div>
   );
 
   return (
-    <div style={{position:"relative",zIndex:2,background:"#FFF8F9",borderTop:`1px solid ${C.primaryB}`,padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px"}}>
+    <div style={{position:"relative",zIndex:2,background:"#FFF8F9",borderTop:`1px solid ${C.primaryB}`,
+      padding:"10px 14px",display:"flex",flexDirection:"column",gap:"8px"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-        <p style={{margin:0,fontSize:"12px",fontWeight:600,color:C.textL,fontFamily:SANS,letterSpacing:"0.05em",textTransform:"uppercase"}}>
-          {phase==="done" ? "✓ Gone." : "Get it out — no one will see this"}
+        <p style={{margin:0,fontSize:"12px",fontWeight:600,color:C.textL,fontFamily:SANS,
+          letterSpacing:"0.05em",textTransform:"uppercase"}}>
+          {phase==="done"?"✓ Gone.":"Get it out — no one will see this"}
         </p>
         <button onClick={()=>{setOpen(false);setPhase("idle");setText("");}}
           style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"18px",lineHeight:1,padding:"0 4px"}}>×</button>
       </div>
-
-      {phase!=="done" && (
+      {phase!=="done"&&(
         <>
           <textarea ref={taRef} value={text} onChange={e=>setText(e.target.value)}
             placeholder="Write it here. Anything. Get it all out..."
-            style={{
-              width:"100%", minHeight:"72px", border:`1.5px solid ${C.primaryB}`,
-              borderRadius:"10px", padding:"10px 12px", fontSize:"15px", color:C.text,
-              fontFamily:SANS, resize:"none", outline:"none",
-              background: phase==="blowing" ? "transparent" : "#FFF0F3",
-              lineHeight:1.6, boxSizing:"border-box",
-              opacity: phase==="blowing" ? 0 : 1,
-              transform: phase==="blowing" ? "scale(1.04)" : "scale(1)",
-              transition: phase==="blowing" ? "all 0.5s ease-out" : "none",
-            }}/>
+            style={{width:"100%",minHeight:"60px",border:`1.5px solid ${C.primaryB}`,borderRadius:"10px",
+              padding:"10px 12px",fontSize:"15px",color:C.text,fontFamily:SANS,resize:"none",outline:"none",
+              background:phase==="blowing"?"transparent":"#FFF0F3",lineHeight:1.6,boxSizing:"border-box",
+              opacity:phase==="blowing"?0:1,transform:phase==="blowing"?"scale(1.04)":"scale(1)",
+              transition:phase==="blowing"?"all 0.5s ease-out":"none"}}/>
           <button onClick={blowUp} disabled={!text.trim()||phase==="blowing"}
-            style={{width:"100%",padding:"10px",background:text.trim()?C.primary:C.fogD,border:"none",borderRadius:"10px",fontSize:"15px",fontWeight:700,color:text.trim()?"#fff":C.textL,cursor:text.trim()?"pointer":"default",fontFamily:SANS,
-              transform:phase==="blowing"?"scale(0.96)":"scale(1)",
-              transition:"transform 0.3s",
-            }}>
+            style={{width:"100%",padding:"10px",background:text.trim()?C.primary:C.fogD,border:"none",
+              borderRadius:"10px",fontSize:"15px",fontWeight:700,color:text.trim()?"#fff":C.textL,
+              cursor:text.trim()?"pointer":"default",fontFamily:SANS,
+              transform:phase==="blowing"?"scale(0.96)":"scale(1)",transition:"transform 0.3s"}}>
             💥 Let it go
           </button>
         </>
       )}
-
-      {phase==="done" && (
-        <div style={{textAlign:"center",padding:"8px 0",animation:"fadeOut 1s ease-out 0.6s forwards",opacity:1}}>
+      {phase==="done"&&(
+        <div style={{textAlign:"center",padding:"8px 0",animation:"fadeOut 1s ease-out 0.6s forwards"}}>
           <p style={{margin:0,fontSize:"20px"}}>💨</p>
           <p style={{margin:"4px 0 0",fontSize:"14px",color:C.textL,fontFamily:SANS}}>Gone. Not stored. Not sent. Just gone.</p>
         </div>
@@ -308,137 +404,250 @@ function BlowUpBox() {
 
 // ─── Chat ──────────────────────────────────────────────────────────────────────
 function ChatTab() {
-  const [msgs,      setMsgs]      = useState(()=>load("sw_msgs",[]));
-  const [input,     setInput]     = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [focused,   setFocused]   = useState(false);
-  const [apiError,  setApiError]  = useState(null);
-  const [pendingImg,setPendingImg]= useState(null);
-  const bottomRef = useRef(null);
-  const taRef     = useRef(null);
-  const fileRef   = useRef(null);
-  const shown     = useRef(msgs.length > 0);
+  const [msgs,       setMsgs]       = useState(()=>load("sw_msgs",[]));
+  const [input,      setInput]      = useState("");
+  const [loading,    setLoading]    = useState(false);
+  const [focused,    setFocused]    = useState(false);
+  const [apiError,   setApiError]   = useState(null);
+  const [pendingImg, setPendingImg] = useState(null);
+  const [listening,  setListening]  = useState(false);
+  const [tidying,    setTidying]    = useState(false);
+  const [tidyErr,    setTidyErr]    = useState(null);
+  // Inline confirm for clear chat
+  const [clearPending, setClearPending] = useState(false);
+  const clearTimerRef = useRef(null);
+
+  const bottomRef  = useRef(null);
+  const taRef      = useRef(null);
+  const fileRef    = useRef(null);
+  const recognRef  = useRef(null);
+  const shown      = useRef(msgs.length > 0);
+
+  const speechSupported = typeof window !== "undefined" &&
+    ("SpeechRecognition" in window || "webkitSpeechRecognition" in window);
 
   useEffect(()=>{ save("sw_msgs", msgs.slice(-60)); }, [msgs]);
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); }, [msgs,loading]);
   useEffect(()=>{
     if (!shown.current) { shown.current=true; setLoading(true);
       setTimeout(()=>{ setMsgs([OPENING]); setLoading(false); }, 700); }
-  }, []);
+  },[]);
+  useEffect(()=>()=>{ clearTimeout(clearTimerRef.current); },[]);
 
+  // B1 — inline confirm for clear chat (replaces window.confirm)
   const clearChat = () => {
-    if (!confirm_del("Clear the entire conversation and start fresh?")) return;
-    setMsgs([]); shown.current=false; save("sw_msgs",[]);
-    setTimeout(()=>{ setMsgs([OPENING]); shown.current=true; }, 700);
+    if (clearPending) {
+      clearTimeout(clearTimerRef.current);
+      setClearPending(false);
+      setMsgs([]); shown.current=false; save("sw_msgs",[]);
+      setTimeout(()=>{ setMsgs([OPENING]); shown.current=true; }, 700);
+    } else {
+      setClearPending(true);
+      clearTimerRef.current = setTimeout(()=>setClearPending(false), 3000);
+    }
+  };
+
+  // F1 — Voice dictation
+  const startListening = () => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const r = new SR();
+    r.lang = "en-GB";
+    r.continuous = false;
+    r.interimResults = false;
+    r.onresult = e => {
+      const transcript = e.results[0][0].transcript;
+      setInput(prev => prev ? prev + " " + transcript : transcript);
+      setListening(false);
+    };
+    r.onerror = () => setListening(false);
+    r.onend   = () => setListening(false);
+    recognRef.current = r;
+    r.start();
+    setListening(true);
+  };
+
+  const stopListening = () => { recognRef.current?.stop(); setListening(false); };
+
+  // F3 — Tidy up
+  const tidyUp = async () => {
+    if (!input.trim() || tidying) return;
+    setTidyErr(null);
+    setTidying(true);
+    try {
+      const res  = await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({system:TIDY_PROMPT,messages:[{role:"user",content:input.trim()}]})});
+      const data = await res.json();
+      if (!res.ok||data.error) throw new Error(data.error?.message||`HTTP ${res.status}`);
+      const tidied = data.content?.find(b=>b.type==="text")?.text;
+      if (tidied) setInput(tidied.trim());
+    } catch(e) { setTidyErr("Tidy failed — your original text is safe"); }
+    setTidying(false);
   };
 
   const send = async () => {
     const text = input.trim();
-    if ((!text && !pendingImg) || loading) return;
-    setApiError(null);
-    const userMsg = { role:"user", content:text, image:pendingImg?.dataUrl||null };
-    const updated = [...msgs, userMsg];
+    if ((!text&&!pendingImg)||loading) return;
+    setApiError(null); setTidyErr(null);
+    const userMsg = {role:"user",content:text,image:pendingImg?.dataUrl||null};
+    const updated = [...msgs,userMsg];
     setMsgs(updated); setInput("");
     const sentImg = pendingImg; setPendingImg(null);
-    if (taRef.current) taRef.current.style.height = "42px";
+    if (taRef.current) taRef.current.style.height="42px";
     setLoading(true);
     try {
-      const apiMsgs = updated.slice(1).map(m => {
-        if (m.image && m.role==="user") {
-          const id = m===userMsg ? sentImg : null;
-          if (id) return { role:"user", content:[
+      const apiMsgs = updated.slice(1).map(m=>{
+        if (m.image&&m.role==="user") {
+          const id = m===userMsg?sentImg:null;
+          if (id) return{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:id.mediaType,data:id.base64}},
             {type:"text",text:m.content||"I'm sharing a photo."}
           ]};
-          return { role:"user", content:m.content||"[earlier image]" };
+          return{role:"user",content:m.content||"[earlier image]"};
         }
-        return { role:m.role, content:m.content };
+        return{role:m.role,content:m.content};
       });
-      const res  = await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:SYSTEM_PROMPT,messages:apiMsgs})});
+      const res  = await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({system:SYSTEM_PROMPT,messages:apiMsgs})});
       const data = await res.json();
       if (!res.ok||data.error) throw new Error(data.error?.message||`HTTP ${res.status}`);
-      const reply = data.content?.find(b=>b.type==="text")?.text || "I'm still here. Take your time.";
+      const reply = data.content?.find(b=>b.type==="text")?.text||"I'm still here. Take your time.";
       setMsgs(prev=>[...prev,{role:"assistant",content:reply}]);
-    } catch(e) {
-      setApiError(e.message);
-      setMsgs(prev=>[...prev,{role:"assistant",content:"Something went wrong — please try again."}]);
-    }
+    } catch(e) { setApiError(e.message); setMsgs(prev=>[...prev,{role:"assistant",content:"Something went wrong — please try again."}]); }
     setLoading(false);
   };
 
-  const handleImg = e => {
-    const file = e.target.files?.[0]; if(!file) return;
+  const handleImg = e=>{
+    const file=e.target.files?.[0]; if(!file) return;
     if(file.size>5*1024*1024){alert("Image under 5MB please");return;}
-    const r=new FileReader(); r.onload=()=>setPendingImg({dataUrl:r.result,base64:r.result.split(",")[1],mediaType:file.type}); r.readAsDataURL(file); e.target.value="";
+    const r=new FileReader(); r.onload=()=>setPendingImg({dataUrl:r.result,base64:r.result.split(",")[1],mediaType:file.type});
+    r.readAsDataURL(file); e.target.value="";
   };
-  const hk  = e => { if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();} };
-  const rz  = e => { e.target.style.height="auto"; e.target.style.height=Math.min(e.target.scrollHeight,140)+"px"; };
+  const hk  = e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();send();}};
+  const rz  = e=>{e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,140)+"px";};
   const can = (input.trim()||pendingImg)&&!loading;
 
   return (
     <div style={{display:"flex",flexDirection:"column",flex:1,overflow:"hidden",position:"relative"}}>
       <Bg/>
-      {/* Clear chat button */}
-      <div style={{position:"relative",zIndex:2,display:"flex",justifyContent:"flex-end",padding:"6px 14px 0"}}>
-        <button onClick={clearChat} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:"12px",color:C.textL,fontFamily:SANS,padding:"4px 8px"}}>Clear chat</button>
+      {/* Clear chat — inline confirm */}
+      <div style={{position:"relative",zIndex:2,display:"flex",justifyContent:"flex-end",padding:"5px 14px 0"}}>
+        <button onClick={clearChat}
+          style={{background:clearPending?C.red:"transparent",border:clearPending?`1px solid ${C.red}`:"none",
+            borderRadius:"6px",padding:clearPending?"4px 10px":"4px 8px",
+            fontSize:"12px",fontWeight:clearPending?700:400,color:clearPending?"#fff":C.textL,
+            fontFamily:SANS,cursor:"pointer",transition:"all 0.15s"}}>
+          {clearPending?"Tap again to clear":"Clear chat"}
+        </button>
       </div>
 
-      <div style={{position:"relative",flex:1,overflowY:"auto",padding:"0.75rem 1rem 1rem",zIndex:1,display:"flex",flexDirection:"column",gap:"1rem",WebkitOverflowScrolling:"touch"}}>
+      {/* Messages — L1 avatar top-aligned, L2 content anchors top, L3 tighter paragraphs */}
+      <div style={{position:"relative",flex:1,overflowY:"auto",padding:"0.75rem 1rem",zIndex:1,
+        display:"flex",flexDirection:"column",justifyContent:"flex-start",gap:"0.75rem",
+        WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,80px)"}}>
         {msgs.map((m,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",alignItems:"flex-end",gap:"8px"}}>
+          <div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",
+            alignItems:"flex-start",gap:"8px"}}>
             {m.role==="assistant"&&(
-              <div style={{width:"34px",height:"34px",borderRadius:"10px",background:C.primaryL,border:`1.5px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                <GeishaIcon size={24}/>
+              <div style={{width:"32px",height:"32px",borderRadius:"9px",background:C.primaryL,
+                border:`1.5px solid ${C.primaryB}`,display:"flex",alignItems:"center",
+                justifyContent:"center",flexShrink:0,marginTop:"2px"}}>
+                <GeishaIcon size={22}/>
               </div>
             )}
-            <div style={{maxWidth:"80%",background:m.role==="user"?C.primary:C.white,border:m.role==="user"?"none":`1.5px solid ${C.border}`,borderRadius:m.role==="user"?"16px 16px 4px 16px":"4px 16px 16px 16px",padding:m.image?"8px":"11px 15px",fontSize:"16px",lineHeight:1.65,color:m.role==="user"?"#fff":C.text,whiteSpace:"pre-wrap",fontFamily:SANS}}>
-              {m.image&&<img src={m.image} alt="shared" style={{width:"100%",maxHeight:"220px",objectFit:"cover",borderRadius:"10px",display:"block",marginBottom:m.content?"8px":0}}/>}
+            <div style={{maxWidth:"80%",background:m.role==="user"?C.primary:C.white,
+              border:m.role==="user"?"none":`1.5px solid ${C.border}`,
+              borderRadius:m.role==="user"?"16px 16px 4px 16px":"4px 16px 16px 16px",
+              padding:m.image?"8px":"10px 14px",fontSize:"15px",lineHeight:1.6,
+              color:m.role==="user"?"#fff":C.text,whiteSpace:"pre-wrap",fontFamily:SANS}}>
+              {m.image&&<img src={m.image} alt="shared" style={{width:"100%",maxHeight:"200px",objectFit:"cover",borderRadius:"8px",display:"block",marginBottom:m.content?"6px":0}}/>}
               {m.content&&<span>{m.content}</span>}
             </div>
           </div>
         ))}
         {loading&&(
-          <div style={{display:"flex",alignItems:"flex-end",gap:"8px"}}>
-            <div style={{width:"34px",height:"34px",borderRadius:"10px",background:C.primaryL,border:`1.5px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <GeishaIcon size={24}/>
+          <div style={{display:"flex",alignItems:"flex-start",gap:"8px"}}>
+            <div style={{width:"32px",height:"32px",borderRadius:"9px",background:C.primaryL,border:`1.5px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center",marginTop:"2px"}}>
+              <GeishaIcon size={22}/>
             </div>
-            <div style={{background:C.white,border:`1.5px solid ${C.border}`,borderRadius:"4px 18px 18px 18px",padding:"14px 18px",display:"flex",gap:"6px"}}>
+            <div style={{background:C.white,border:`1.5px solid ${C.border}`,borderRadius:"4px 16px 16px 16px",padding:"12px 16px",display:"flex",gap:"6px"}}>
               {[0,1,2].map(d=><span key={d} style={{width:"7px",height:"7px",borderRadius:"50%",background:C.primaryM,display:"inline-block",animation:"pulse 1.4s ease-in-out infinite",animationDelay:`${d*0.22}s`}}/>)}
             </div>
           </div>
         )}
-        {apiError&&<p style={{textAlign:"center",fontSize:"14px",color:C.red,margin:0,padding:"8px 14px",background:C.redL,borderRadius:"10px",border:`1px solid ${C.redB}`}}>⚠ {apiError}</p>}
+        {apiError&&<p style={{textAlign:"center",fontSize:"13px",color:C.red,margin:0,padding:"6px 12px",background:C.redL,borderRadius:"8px",border:`1px solid ${C.redB}`}}>⚠ {apiError}</p>}
         <div ref={bottomRef}/>
       </div>
 
       {pendingImg&&(
-        <div style={{position:"relative",background:C.white,borderTop:`1.5px solid ${C.border}`,padding:"10px 14px",display:"flex",alignItems:"center",gap:"12px",zIndex:2}}>
-          <img src={pendingImg.dataUrl} alt="preview" style={{width:"46px",height:"46px",borderRadius:"10px",objectFit:"cover"}}/>
-          <p style={{margin:0,flex:1,fontSize:"15px",color:C.text}}>Photo ready to send</p>
-          <button onClick={()=>setPendingImg(null)} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textM,fontSize:"22px",lineHeight:1}}>×</button>
+        <div style={{position:"relative",background:C.white,borderTop:`1.5px solid ${C.border}`,padding:"8px 14px",display:"flex",alignItems:"center",gap:"12px",zIndex:2}}>
+          <img src={pendingImg.dataUrl} alt="preview" style={{width:"42px",height:"42px",borderRadius:"8px",objectFit:"cover"}}/>
+          <p style={{margin:0,flex:1,fontSize:"14px",color:C.text}}>Photo ready to send</p>
+          <button onClick={()=>setPendingImg(null)} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textM,fontSize:"20px",lineHeight:1}}>×</button>
         </div>
       )}
 
       {/* 💥 Blow Up Box */}
       <BlowUpBox/>
 
-      <div style={{position:"relative",background:C.white,borderTop:`1.5px solid ${C.border}`,padding:"12px 14px 14px",zIndex:2}}>
-        <div style={{display:"flex",gap:"10px",alignItems:"flex-end",background:C.fog,border:`2px solid ${focused?C.primaryM:C.border}`,borderRadius:"14px",padding:"8px 8px 8px 12px",transition:"border-color 0.2s"}}>
-          <button onClick={()=>fileRef.current?.click()} disabled={loading} style={{background:"transparent",border:"none",cursor:"pointer",padding:"6px",color:C.primary,display:"flex",minHeight:"44px",alignItems:"center"}}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {/* ✨ Tidy button — appears when input has text */}
+      {input.trim()&&(
+        <div style={{position:"relative",zIndex:2,background:C.white,padding:"4px 14px 0",display:"flex",gap:"8px",alignItems:"center"}}>
+          <button onClick={tidyUp} disabled={tidying}
+            style={{fontSize:"12px",fontWeight:600,padding:"5px 12px",borderRadius:"8px",border:`1.5px solid ${C.primaryB}`,
+              background:tidying?C.fogD:C.primaryL,color:tidying?C.textL:C.primary,cursor:tidying?"default":"pointer",fontFamily:SANS}}>
+            {tidying?"Tidying...":"✨ Tidy up"}
+          </button>
+          {tidyErr&&<p style={{margin:0,fontSize:"11px",color:C.red,fontFamily:SANS}}>{tidyErr}</p>}
+        </div>
+      )}
+
+      {/* Input bar */}
+      <div style={{position:"relative",background:C.white,borderTop:`1.5px solid ${C.border}`,padding:"10px 12px 12px",zIndex:2}}>
+        <div style={{display:"flex",gap:"8px",alignItems:"flex-end",background:C.fog,
+          border:`2px solid ${focused?C.primaryM:C.border}`,borderRadius:"14px",padding:"6px 6px 6px 10px",transition:"border-color 0.2s"}}>
+
+          {/* Image button */}
+          <button onClick={()=>fileRef.current?.click()} disabled={loading}
+            style={{background:"transparent",border:"none",cursor:"pointer",padding:"5px",color:C.primary,display:"flex",minHeight:"40px",alignItems:"center"}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
             </svg>
           </button>
           <input ref={fileRef} type="file" accept="image/*" capture="environment" onChange={handleImg} style={{display:"none"}}/>
+
+          {/* F1 — Mic button */}
+          {speechSupported&&(
+            <button onClick={listening?stopListening:startListening} disabled={loading}
+              style={{background:"transparent",border:"none",cursor:"pointer",padding:"5px",
+                color:listening?C.red:C.textL,display:"flex",minHeight:"40px",alignItems:"center",position:"relative"}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+              {listening&&<span style={{position:"absolute",top:"4px",right:"2px",width:"7px",height:"7px",borderRadius:"50%",background:C.red,animation:"pulse 1s ease-in-out infinite"}}/>}
+            </button>
+          )}
+
           <textarea ref={taRef} value={input} onChange={e=>{setInput(e.target.value);rz(e);}} onKeyDown={hk}
             onFocus={()=>setFocused(true)} onBlur={()=>setFocused(false)}
             placeholder="What's on your mind?" rows={1}
-            style={{flex:1,resize:"none",border:"none",background:"transparent",padding:"5px 0",fontSize:"16px",lineHeight:1.6,color:C.text,outline:"none",overflowY:"hidden",minHeight:"34px",fontFamily:SANS}}/>
+            style={{flex:1,resize:"none",border:"none",background:"transparent",padding:"5px 0",fontSize:"16px",
+              lineHeight:1.6,color:C.text,outline:"none",overflowY:"hidden",minHeight:"32px",fontFamily:SANS}}/>
+
           <button onClick={send} disabled={!can}
-            style={{padding:"10px 18px",borderRadius:"11px",border:"none",background:can?C.primary:C.fogD,color:can?"#fff":C.textL,fontSize:"16px",fontWeight:700,cursor:can?"pointer":"default",flexShrink:0,fontFamily:SANS,minHeight:"48px"}}>
+            style={{padding:"9px 16px",borderRadius:"10px",border:"none",background:can?C.primary:C.fogD,
+              color:can?"#fff":C.textL,fontSize:"15px",fontWeight:700,cursor:can?"pointer":"default",
+              flexShrink:0,fontFamily:SANS,minHeight:"44px"}}>
             Send
           </button>
         </div>
+        {listening&&(
+          <p style={{margin:"4px 0 0",fontSize:"11px",color:C.red,fontFamily:SANS,textAlign:"center",fontWeight:600}}>
+            🎤 Listening... tap mic to stop
+          </p>
+        )}
       </div>
     </div>
   );
@@ -447,67 +656,75 @@ function ChatTab() {
 // ─── Today ─────────────────────────────────────────────────────────────────────
 function TodayTab({ setOverdueBadge }) {
   const dk = today();
-  const [meds,      setMeds]      = useState(()=>load("sw_meds_config", DEFAULT_MEDS));
-  const [medsDone,  setMedsDone]  = useState(()=>load(`sw_meds_done_${dk}`, {}));
-  const [mood,      setMood]      = useState(()=>load(`sw_mood_${dk}`, null));
-  const [moodNote,  setMoodNote]  = useState(()=>load(`sw_moodnote_${dk}`, ""));
-  const [noteOpen,  setNoteOpen]  = useState(false);
-  const [editingMed,setEditingMed]= useState(null);
-  const [addingMed, setAddingMed] = useState(false);
-  const [newMed,    setNewMed]    = useState({name:"",dose:"",time:"Morning",note:"",warn:false});
-  const now = new Date(); const h = now.getHours();
+  const [meds,       setMeds]       = useState(()=>load("sw_meds_config",DEFAULT_MEDS));
+  const [medsDone,   setMedsDone]   = useState(()=>load(`sw_meds_done_${dk}`,{}));
+  const [mood,       setMood]       = useState(()=>load(`sw_mood_${dk}`,null));
+  const [moodNote,   setMoodNote]   = useState(()=>load(`sw_moodnote_${dk}`,""));
+  const [noteOpen,   setNoteOpen]   = useState(false);
+  const [editingMed, setEditingMed] = useState(null);
+  const [addingMed,  setAddingMed]  = useState(false);
+  const [newMed,     setNewMed]     = useState({name:"",dose:"",time:"Morning",note:"",warn:false});
 
-  useEffect(()=>{ save("sw_meds_config", meds); }, [meds]);
-  useEffect(()=>{ save(`sw_meds_done_${dk}`, medsDone); }, [medsDone,dk]);
-  useEffect(()=>{ save(`sw_mood_${dk}`, mood); }, [mood,dk]);
-  useEffect(()=>{ save(`sw_moodnote_${dk}`, moodNote); }, [moodNote,dk]);
+  // B9 — refresh clock every 60s so date/hour stays current
+  const [now, setNow] = useState(new Date());
+  useEffect(()=>{
+    const iv = setInterval(()=>setNow(new Date()), 60000);
+    return ()=>clearInterval(iv);
+  },[]);
+  const h = now.getHours();
 
-  // Badge: overdue if any morning med undone after 9am, or any evening med undone after 18:00
+  useEffect(()=>{ save("sw_meds_config",meds); },[meds]);
+  useEffect(()=>{ save(`sw_meds_done_${dk}`,medsDone); },[medsDone,dk]);
+  useEffect(()=>{ save(`sw_mood_${dk}`,mood); },[mood,dk]);
+  useEffect(()=>{ save(`sw_moodnote_${dk}`,moodNote); },[moodNote,dk]);
+
   useEffect(()=>{
     const amOverdue = h>=9  && meds.filter(m=>m.time==="Morning").some(m=>!medsDone[m.id]);
     const pmOverdue = h>=18 && meds.filter(m=>m.time==="Evening").some(m=>!medsDone[m.id]);
     setOverdueBadge(amOverdue||pmOverdue);
-  }, [medsDone, meds, h, setOverdueBadge]);
+  },[medsDone,meds,h,setOverdueBadge]);
 
-  const toggleMed  = id => setMedsDone(prev=>({...prev,[id]:!prev[id]}));
-  const saveMedEdit= (id,field,val) => setMeds(prev=>prev.map(m=>m.id===id?{...m,[field]:val}:m));
-  const deleteMed  = id => { if(confirm_del("Remove this medication?")) setMeds(prev=>prev.filter(m=>m.id!==id)); };
-  const addMed     = () => { if(!newMed.name.trim()) return; setMeds(prev=>[...prev,{...newMed,id:uid()}]); setNewMed({name:"",dose:"",time:"Morning",note:"",warn:false}); setAddingMed(false); };
+  const toggleMed   = id => setMedsDone(prev=>({...prev,[id]:!prev[id]}));
+  const saveMedEdit = (id,field,val) => setMeds(prev=>prev.map(m=>m.id===id?{...m,[field]:val}:m));
+  const deleteMed   = id => setMeds(prev=>prev.filter(m=>m.id!==id));
+  const addMed      = () => { if(!newMed.name.trim()) return; setMeds(prev=>[...prev,{...newMed,id:uid()}]); setNewMed({name:"",dose:"",time:"Morning",note:"",warn:false}); setAddingMed(false); };
 
-  // 7-day mood strip
   const moodStrip = Array.from({length:7}).map((_,i)=>{
-    const d = new Date(); d.setDate(d.getDate()-6+i);
-    const k = d.toISOString().split("T")[0];
-    const s = load(`sw_mood_${k}`, null);
-    return { key:k, score:s, isToday:k===dk, label:d.toLocaleDateString("en-GB",{weekday:"short"}) };
+    const d=new Date(); d.setDate(d.getDate()-6+i);
+    const k=d.toISOString().split("T")[0];
+    return{key:k,score:load(`sw_mood_${k}`,null),isToday:k===dk,label:d.toLocaleDateString("en-GB",{weekday:"short"})};
   });
 
-  const visits = [
+  const visits=[
     {label:"Morning visit",window:"10:30 – 13:30",active:h>=10&&h<14,done:h>=14},
     {label:"Evening visit",window:"17:00 – 20:30",active:h>=17&&h<21,done:h>=21},
   ];
 
-  const INPUT_STYLE = {padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"16px",fontFamily:SANS,color:C.text,outline:"none",background:C.white};
-  const SELECT_STYLE = {...INPUT_STYLE};
+  const IS = {padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"16px",fontFamily:SANS,color:C.text,outline:"none",background:C.white};
 
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"0.75rem",display:"flex",flexDirection:"column",gap:"0.6rem",WebkitOverflowScrolling:"touch"}}>
-      <p style={{margin:0,textAlign:"center",fontSize:"15px",color:C.textM,fontWeight:600}}>
+    <div style={{flex:1,overflowY:"auto",padding:"0.75rem",display:"flex",flexDirection:"column",gap:"0.7rem",
+      WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,80px)"}}>
+
+      <p style={{margin:0,textAlign:"center",fontSize:"14px",color:C.textM,fontWeight:600}}>
         {now.toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}
       </p>
 
-      {/* 7-day mood strip */}
-      <div style={{background:C.white,borderRadius:"12px",border:`1.5px solid ${C.border}`,padding:"10px 12px"}}>
-        <p style={{margin:"0 0 8px",fontSize:"13px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>7-day mood</p>
+      {/* 7-day mood strip — L4 proper dot, L5 tighter, L6 labels 10px */}
+      <div style={{background:C.white,borderRadius:"12px",border:`1.5px solid ${C.border}`,padding:"8px 10px"}}>
+        <p style={{margin:"0 0 6px",fontSize:"12px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>7-day mood</p>
         <div style={{display:"flex",gap:"3px",justifyContent:"space-between"}}>
           {moodStrip.map(d=>{
-            const m = MOODS.find(x=>x.score===d.score);
-            return (
+            const m=MOODS.find(x=>x.score===d.score);
+            return(
               <div key={d.key} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:"3px"}}>
-                <div style={{width:"26px",height:"26px",borderRadius:"50%",background:m?m.color+"30":C.fogD,border:`2px solid ${d.isToday?C.primary:C.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px"}}>
-                  {m?m.emoji:"·"}
+                <div style={{width:"26px",height:"26px",borderRadius:"50%",
+                  background:m?m.color+"30":C.fogD,
+                  border:`2px solid ${d.isToday?C.primary:C.border}`,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:"13px"}}>
+                  {m?m.emoji:<span style={{width:"5px",height:"5px",borderRadius:"50%",background:C.border,display:"block"}}/>}
                 </div>
-                <span style={{fontSize:"9px",color:d.isToday?C.primary:C.textL,fontWeight:d.isToday?700:400,fontFamily:SANS}}>{d.label}</span>
+                <span style={{fontSize:"10px",color:d.isToday?C.primary:C.textL,fontWeight:d.isToday?700:400,fontFamily:SANS}}>{d.label}</span>
               </div>
             );
           })}
@@ -515,75 +732,74 @@ function TodayTab({ setOverdueBadge }) {
       </div>
 
       {/* Medication */}
-      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-            <span style={{fontSize:"22px"}}>💊</span>
-            <p style={{margin:0,fontSize:"17px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>Medication</p>
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+        <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+            <span style={{fontSize:"20px"}}>💊</span>
+            <p style={{margin:0,fontSize:"16px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>Medication</p>
           </div>
           <button onClick={()=>setAddingMed(v=>!v)}
-            style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"6px 12px",fontSize:"13px",fontWeight:600,color:C.primary,cursor:"pointer",fontFamily:SANS}}>
+            style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"8px",padding:"5px 10px",fontSize:"12px",fontWeight:600,color:C.primary,cursor:"pointer",fontFamily:SANS}}>
             {addingMed?"Cancel":"+ Add"}
           </button>
         </div>
-
         {addingMed&&(
-          <div style={{padding:"14px 16px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
-            <input value={newMed.name} onChange={e=>setNewMed(p=>({...p,name:e.target.value}))} placeholder="Medication name" style={INPUT_STYLE}/>
+          <div style={{padding:"12px 14px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+            <input value={newMed.name} onChange={e=>setNewMed(p=>({...p,name:e.target.value}))} placeholder="Medication name" style={IS}/>
             <div style={{display:"flex",gap:"8px"}}>
-              <input value={newMed.dose} onChange={e=>setNewMed(p=>({...p,dose:e.target.value}))} placeholder="Dose e.g. 10mg" style={{...INPUT_STYLE,flex:1}}/>
-              <select value={newMed.time} onChange={e=>setNewMed(p=>({...p,time:e.target.value}))} style={{...SELECT_STYLE,flex:1}}>
+              <input value={newMed.dose} onChange={e=>setNewMed(p=>({...p,dose:e.target.value}))} placeholder="Dose e.g. 10mg" style={{...IS,flex:1}}/>
+              <select value={newMed.time} onChange={e=>setNewMed(p=>({...p,time:e.target.value}))} style={{...IS,flex:1}}>
                 <option>Morning</option><option>Afternoon</option><option>Evening</option><option>Night</option>
               </select>
             </div>
-            <input value={newMed.note} onChange={e=>setNewMed(p=>({...p,note:e.target.value}))} placeholder="Note e.g. With food" style={INPUT_STYLE}/>
+            <input value={newMed.note} onChange={e=>setNewMed(p=>({...p,note:e.target.value}))} placeholder="Note e.g. With food" style={IS}/>
             <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",color:C.textM,cursor:"pointer"}}>
               <input type="checkbox" checked={newMed.warn} onChange={e=>setNewMed(p=>({...p,warn:e.target.checked}))} style={{width:"18px",height:"18px"}}/>
-              Show warning (e.g. eat first)
+              Show warning
             </label>
             <Btn onClick={addMed} disabled={!newMed.name.trim()}>Add medication</Btn>
           </div>
         )}
-
-        {/* Scrollable med list */}
-        <ScrollBox maxHeight={420}>
+        {/* L8 — maxHeight reduced to 200 */}
+        <ScrollBox maxHeight={200}>
           {["Morning","Afternoon","Evening","Night"].map(period=>{
-            const pm = meds.filter(m=>m.time===period);
-            if (!pm.length) return null;
-            return (
+            const pm=meds.filter(m=>m.time===period);
+            if(!pm.length) return null;
+            return(
               <div key={period}>
-                <p style={{margin:0,padding:"10px 16px 4px",fontSize:"13px",fontWeight:700,color:C.textL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{period}</p>
+                <p style={{margin:0,padding:"8px 14px 3px",fontSize:"12px",fontWeight:700,color:C.textL,textTransform:"uppercase",letterSpacing:"0.08em"}}>{period}</p>
                 {pm.map(med=>(
-                  editingMed===med.id ? (
-                    <div key={med.id} style={{padding:"12px 16px",borderTop:`1px solid ${C.fogD}`,background:C.primaryL,display:"flex",flexDirection:"column",gap:"8px"}}>
-                      <input value={med.name} onChange={e=>saveMedEdit(med.id,"name",e.target.value)} style={INPUT_STYLE}/>
+                  editingMed===med.id?(
+                    <div key={med.id} style={{padding:"10px 14px",borderTop:`1px solid ${C.fogD}`,background:C.primaryL,display:"flex",flexDirection:"column",gap:"7px"}}>
+                      <input value={med.name} onChange={e=>saveMedEdit(med.id,"name",e.target.value)} style={IS}/>
                       <div style={{display:"flex",gap:"8px"}}>
-                        <input value={med.dose} onChange={e=>saveMedEdit(med.id,"dose",e.target.value)} placeholder="Dose" style={{...INPUT_STYLE,flex:1}}/>
-                        <select value={med.time} onChange={e=>saveMedEdit(med.id,"time",e.target.value)} style={{...SELECT_STYLE,flex:1}}>
+                        <input value={med.dose} onChange={e=>saveMedEdit(med.id,"dose",e.target.value)} placeholder="Dose" style={{...IS,flex:1}}/>
+                        <select value={med.time} onChange={e=>saveMedEdit(med.id,"time",e.target.value)} style={{...IS,flex:1}}>
                           <option>Morning</option><option>Afternoon</option><option>Evening</option><option>Night</option>
                         </select>
                       </div>
-                      <input value={med.note} onChange={e=>saveMedEdit(med.id,"note",e.target.value)} placeholder="Note" style={INPUT_STYLE}/>
-                      <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",color:C.textM,cursor:"pointer"}}>
+                      <input value={med.note} onChange={e=>saveMedEdit(med.id,"note",e.target.value)} placeholder="Note" style={IS}/>
+                      <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"14px",color:C.textM,cursor:"pointer"}}>
                         <input type="checkbox" checked={med.warn} onChange={e=>saveMedEdit(med.id,"warn",e.target.checked)} style={{width:"18px",height:"18px"}}/>
                         Show warning
                       </label>
                       <div style={{display:"flex",gap:"8px"}}>
                         <Btn small onClick={()=>setEditingMed(null)}>Done</Btn>
-                        <Btn small variant="danger" onClick={()=>deleteMed(med.id)}>Delete</Btn>
+                        {/* B1 — inline confirm replaces window.confirm */}
+                        <ConfirmBtn onConfirm={()=>{deleteMed(med.id);setEditingMed(null);}} label="Delete" confirmLabel="Yes, delete" style={{minHeight:"40px",padding:"3px 12px",fontSize:"13px",borderRadius:"8px"}}/>
                       </div>
                     </div>
-                  ) : (
-                    <div key={med.id} style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 14px",background:medsDone[med.id]?C.primaryL:"transparent",borderTop:`1px solid ${C.fogD}`}}>
+                  ):(
+                    <div key={med.id} style={{display:"flex",alignItems:"center",gap:"10px",padding:"8px 14px",background:medsDone[med.id]?C.primaryL:"transparent",borderTop:`1px solid ${C.fogD}`}}>
                       <button onClick={()=>toggleMed(med.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
-                        <Tick done={!!medsDone[med.id]} size={22}/>
+                        <Tick done={!!medsDone[med.id]}/>
                       </button>
                       <div style={{flex:1}}>
                         <p style={{margin:0,fontSize:"15px",fontWeight:600,color:medsDone[med.id]?C.textL:C.text,textDecoration:medsDone[med.id]?"line-through":"none"}}>{med.name} {med.dose}</p>
                         {med.note&&<p style={{margin:0,fontSize:"12px",color:med.warn?C.amber:C.textL}}>{med.warn?"⚠️ ":""}{med.note}</p>}
                       </div>
                       <button onClick={()=>setEditingMed(med.id)}
-                        style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"5px 9px",fontSize:"12px",color:C.textM,cursor:"pointer",fontFamily:SANS,minHeight:"32px"}}>
+                        style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"5px 9px",fontSize:"12px",color:C.textM,cursor:"pointer",fontFamily:SANS,minHeight:"36px"}}>
                         Edit
                       </button>
                     </div>
@@ -595,41 +811,48 @@ function TodayTab({ setOverdueBadge }) {
         </ScrollBox>
       </div>
 
-      {/* WHTT Visits */}
-      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"10px"}}>
-          <span style={{fontSize:"22px"}}>🏥</span>
-          <p style={{margin:0,fontSize:"17px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>WHTT Visits Today</p>
+      {/* WHTT Visits — L9 maxHeight 160 */}
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+        <div style={{padding:"10px 14px",borderBottom:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:"8px"}}>
+          <span style={{fontSize:"20px"}}>🏥</span>
+          <p style={{margin:0,fontSize:"16px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>WHTT Visits Today</p>
         </div>
-        <ScrollBox maxHeight={200}>
+        <ScrollBox maxHeight={160}>
           {visits.map(v=>(
-            <div key={v.label} style={{padding:"10px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"12px"}}>
+            <div key={v.label} style={{padding:"10px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",alignItems:"center",justifyContent:"space-between",gap:"10px"}}>
               <div>
                 <p style={{margin:0,fontSize:"15px",fontWeight:600,color:C.text}}>{v.label}</p>
                 <p style={{margin:0,fontSize:"13px",color:C.textM,fontWeight:500}}>{v.window}</p>
               </div>
-              <span style={{fontSize:"12px",fontWeight:700,padding:"4px 10px",borderRadius:"20px",background:v.done?C.fogD:v.active?C.primaryL:C.amberL,color:v.done?C.textL:v.active?C.primary:C.amber,border:`1.5px solid ${v.done?C.border:v.active?C.primaryB:C.amberB}`,minWidth:"90px",textAlign:"center",display:"inline-block"}}>
+              <span style={{fontSize:"12px",fontWeight:700,padding:"4px 10px",borderRadius:"20px",flexShrink:0,
+                background:v.done?C.fogD:v.active?C.primaryL:C.amberL,
+                color:v.done?C.textL:v.active?C.primary:C.amber,
+                border:`1.5px solid ${v.done?C.border:v.active?C.primaryB:C.amberB}`}}>
                 {v.done?"Done":v.active?"Active now":"Upcoming"}
               </span>
             </div>
           ))}
         </ScrollBox>
-        <div style={{padding:"10px 16px",background:C.fog,borderTop:`1px solid ${C.border}`}}>
-          <p style={{margin:0,fontSize:"14px",color:C.textL}}>📍 Morrison Building, Entrance 4, Springfield Hospital</p>
+        <div style={{padding:"8px 14px",background:C.fog,borderTop:`1px solid ${C.border}`}}>
+          <p style={{margin:0,fontSize:"12px",color:C.textL}}>📍 Morrison Building, Entrance 4, Springfield Hospital</p>
         </div>
       </div>
 
-      {/* Mood check-in */}
-      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,padding:"12px"}}>
+      {/* Mood — L7 smaller buttons, L5 tighter */}
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,padding:"10px 12px"}}>
         <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"10px"}}>
-          <span style={{fontSize:"20px"}}>🌤</span>
+          <span style={{fontSize:"18px"}}>🌤</span>
           <p style={{margin:0,fontSize:"15px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>How are you feeling?</p>
         </div>
-        <div style={{display:"flex",gap:"6px",justifyContent:"space-between",marginBottom:"10px"}}>
+        <div style={{display:"flex",gap:"5px",justifyContent:"space-between",marginBottom:"10px"}}>
           {MOODS.map(m=>(
             <button key={m.score} onClick={()=>setMood(m.score)}
-              style={{flex:1,padding:"7px 2px",borderRadius:"10px",border:`2.5px solid ${mood===m.score?m.color:C.border}`,background:mood===m.score?m.color+"20":"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",transition:"all 0.15s",minHeight:"58px"}}>
-              <span style={{fontSize:"22px"}}>{m.emoji}</span>
+              style={{flex:1,padding:"6px 2px",borderRadius:"10px",
+                border:`2px solid ${mood===m.score?m.color:C.border}`,
+                background:mood===m.score?m.color+"20":"transparent",
+                cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",
+                transition:"all 0.15s",minHeight:"52px"}}>
+              <span style={{fontSize:"20px"}}>{m.emoji}</span>
               <span style={{fontSize:"10px",color:mood===m.score?m.color:C.textL,fontWeight:mood===m.score?700:400,fontFamily:SANS}}>{m.label}</span>
             </button>
           ))}
@@ -637,13 +860,13 @@ function TodayTab({ setOverdueBadge }) {
         {mood&&(
           <div>
             <button onClick={()=>setNoteOpen(v=>!v)}
-              style={{background:"transparent",border:"none",cursor:"pointer",color:C.textM,fontSize:"15px",fontFamily:SANS,padding:"0 0 8px",fontWeight:500}}>
+              style={{background:"transparent",border:"none",cursor:"pointer",color:C.textM,fontSize:"14px",fontFamily:SANS,padding:"0 0 6px",fontWeight:500}}>
               {noteOpen?"▾ Hide note":"▸ Add a note about today"}
             </button>
             {noteOpen&&(
               <textarea value={moodNote} onChange={e=>setMoodNote(e.target.value)}
                 placeholder="What's been on your mind today..."
-                style={{width:"100%",minHeight:"80px",border:`1.5px solid ${C.border}`,borderRadius:"10px",padding:"10px 12px",fontSize:"16px",color:C.text,fontFamily:SANS,resize:"vertical",outline:"none",background:C.fog,lineHeight:1.8,boxSizing:"border-box"}}/>
+                style={{width:"100%",minHeight:"70px",border:`1.5px solid ${C.border}`,borderRadius:"10px",padding:"9px 11px",fontSize:"15px",color:C.text,fontFamily:SANS,resize:"vertical",outline:"none",background:C.fog,lineHeight:1.7,boxSizing:"border-box"}}/>
             )}
           </div>
         )}
@@ -660,40 +883,42 @@ function DiaryTab() {
   const [writing, setWriting] = useState(false);
   const [selMood, setSelMood] = useState(null);
 
-  useEffect(()=>{ save("sw_diary", entries.slice(0,90)); }, [entries]);
+  useEffect(()=>{ save("sw_diary",entries.slice(0,90)); },[entries]);
 
   const addEntry = () => {
     if (!text.trim()) return;
-    const todayMood = load(`sw_mood_${dk}`, null);
-    setEntries(prev=>[{id:Date.now(),date:new Date().toISOString(),text:text.trim(),mood:selMood??todayMood},  ...prev]);
+    const todayMood=load(`sw_mood_${dk}`,null);
+    setEntries(prev=>[{id:Date.now(),date:new Date().toISOString(),text:text.trim(),mood:selMood??todayMood},...prev]);
     setText(""); setSelMood(null); setWriting(false);
   };
-  const deleteEntry = id => { if(confirm_del("Delete this diary entry?")) setEntries(prev=>prev.filter(e=>e.id!==id)); };
-  const fmtDate = iso => { const d=new Date(iso); return d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})+" · "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"}); };
+
+  // B1 — diary delete now uses ConfirmBtn inline
+  const fmtDate = iso=>{const d=new Date(iso);return d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"})+" · "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});};
 
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"1.1rem",display:"flex",flexDirection:"column",gap:"1.1rem",WebkitOverflowScrolling:"touch"}}>
+    <div style={{flex:1,overflowY:"auto",padding:"1rem",display:"flex",flexDirection:"column",gap:"1rem",
+      WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,80px)"}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
-          <h2 style={{margin:0,fontSize:"20px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>My Diary</h2>
-          <p style={{margin:0,fontSize:"14px",color:C.textL}}>Private — just for you</p>
+          <h2 style={{margin:0,fontSize:"19px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>My Diary</h2>
+          <p style={{margin:0,fontSize:"13px",color:C.textL}}>Private — just for you</p>
         </div>
         <Btn onClick={()=>setWriting(v=>!v)} variant={writing?"ghost":"primary"} small>{writing?"Cancel":"+ New entry"}</Btn>
       </div>
 
       {writing&&(
-        <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.primaryB}`,padding:"16px",display:"flex",flexDirection:"column",gap:"10px"}}>
+        <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.primaryB}`,padding:"14px",display:"flex",flexDirection:"column",gap:"10px"}}>
+          {/* L19 — reduced textarea height */}
           <textarea value={text} onChange={e=>setText(e.target.value)} autoFocus
             placeholder="What's on your mind, Wendy? There is no right or wrong way to write here..."
-            style={{width:"100%",minHeight:"130px",border:`1.5px solid ${C.border}`,borderRadius:"10px",padding:"12px 14px",fontSize:"17px",color:C.text,fontFamily:SANS,resize:"vertical",outline:"none",background:C.fog,lineHeight:1.9,boxSizing:"border-box"}}/>
-          {/* Optional mood tag */}
+            style={{width:"100%",minHeight:"90px",border:`1.5px solid ${C.border}`,borderRadius:"10px",padding:"10px 12px",fontSize:"16px",color:C.text,fontFamily:SANS,resize:"vertical",outline:"none",background:C.fog,lineHeight:1.8,boxSizing:"border-box"}}/>
           <div>
-            <p style={{margin:"0 0 8px",fontSize:"13px",color:C.textL,fontWeight:600}}>Tag a mood (optional)</p>
-            <div style={{display:"flex",gap:"8px"}}>
+            <p style={{margin:"0 0 6px",fontSize:"12px",color:C.textL,fontWeight:600}}>Tag a mood (optional)</p>
+            <div style={{display:"flex",gap:"6px"}}>
               {MOODS.map(m=>(
                 <button key={m.score} onClick={()=>setSelMood(selMood===m.score?null:m.score)}
-                  style={{flex:1,padding:"8px 4px",borderRadius:"10px",border:`2px solid ${selMood===m.score?m.color:C.border}`,background:selMood===m.score?m.color+"20":"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
-                  <span style={{fontSize:"20px"}}>{m.emoji}</span>
+                  style={{flex:1,padding:"6px 2px",borderRadius:"9px",border:`2px solid ${selMood===m.score?m.color:C.border}`,background:selMood===m.score?m.color+"20":"transparent",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"2px"}}>
+                  <span style={{fontSize:"18px"}}>{m.emoji}</span>
                   <span style={{fontSize:"9px",color:selMood===m.score?m.color:C.textL,fontWeight:selMood===m.score?700:400}}>{m.label}</span>
                 </button>
               ))}
@@ -707,22 +932,21 @@ function DiaryTab() {
 
       {entries.length===0&&!writing&&(
         <div style={{textAlign:"center",padding:"2.5rem 1rem",color:C.textL}}>
-          <p style={{fontSize:"36px",margin:"0 0 10px"}}>📖</p>
-          <p style={{fontSize:"16px",margin:0}}>Your diary is empty — tap "+ New entry" to begin.</p>
+          <p style={{fontSize:"34px",margin:"0 0 10px"}}>📖</p>
+          <p style={{fontSize:"15px",margin:0}}>Your diary is empty — tap "+ New entry" to begin.</p>
         </div>
       )}
 
       {entries.map(e=>{
-        const mood = MOODS.find(m=>m.score===e.mood);
-        return (
+        const mood=MOODS.find(m=>m.score===e.mood);
+        return(
           <div key={e.id} style={{background:C.white,borderRadius:"12px",border:`1.5px solid ${C.border}`,padding:"12px 14px",position:"relative"}}>
             <div style={{display:"flex",alignItems:"center",gap:"8px",marginBottom:"6px"}}>
               <p style={{margin:0,fontSize:"12px",color:C.textL,fontWeight:600,flex:1}}>{fmtDate(e.date)}</p>
-              {mood&&<span style={{fontSize:"18px"}}>{mood.emoji}</span>}
+              {mood&&<span style={{fontSize:"16px"}}>{mood.emoji}</span>}
+              <ConfirmBtn onConfirm={()=>setEntries(prev=>prev.filter(x=>x.id!==e.id))} style={{fontSize:"16px"}}/>
             </div>
             <p style={{margin:0,fontSize:"15px",color:C.text,lineHeight:1.75,whiteSpace:"pre-wrap"}}>{e.text}</p>
-            <button onClick={()=>deleteEntry(e.id)}
-              style={{position:"absolute",top:"10px",right:"10px",background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"18px",padding:"2px 6px",lineHeight:1}}>×</button>
           </div>
         );
       })}
@@ -732,70 +956,70 @@ function DiaryTab() {
 
 // ─── My Plan ───────────────────────────────────────────────────────────────────
 function PlanTab() {
-  const [open,   setOpen]   = useState({crisis:true,meds:false,team:false,grounding:false});
-  const [crisis, setCrisis] = useState(()=>load("sw_plan_crisis", DEFAULT_CRISIS));
-  const [team,   setTeam]   = useState(()=>load("sw_plan_team",   DEFAULT_TEAM));
-  const [tips,   setTips]   = useState(()=>load("sw_plan_tips",   DEFAULT_TIPS));
-  const [addingC,setAddingC]= useState(false);
-  const [addingT,setAddingT]= useState(false);
-  const [addingG,setAddingG]= useState(false);
-  const [newC,   setNewC]   = useState({label:"",val:"",bold:false});
-  const [newT,   setNewT]   = useState({role:"",people:""});
-  const [newG,   setNewG]   = useState("");
+  const [open,    setOpen]    = useState({crisis:true,meds:false,team:false,grounding:false});
+  const [crisis,  setCrisis]  = useState(()=>load("sw_plan_crisis",DEFAULT_CRISIS));
+  const [team,    setTeam]    = useState(()=>load("sw_plan_team",DEFAULT_TEAM));
+  const [tips,    setTips]    = useState(()=>load("sw_plan_tips",DEFAULT_TIPS));
+  const [addingC, setAddingC] = useState(false);
+  const [addingT, setAddingT] = useState(false);
+  const [addingG, setAddingG] = useState(false);
+  const [newC,    setNewC]    = useState({label:"",val:"",bold:false});
+  const [newT,    setNewT]    = useState({role:"",people:""});
+  const [newG,    setNewG]    = useState("");
 
-  useEffect(()=>{ save("sw_plan_crisis", crisis); }, [crisis]);
-  useEffect(()=>{ save("sw_plan_team",   team);   }, [team]);
-  useEffect(()=>{ save("sw_plan_tips",   tips);   }, [tips]);
+  useEffect(()=>{ save("sw_plan_crisis",crisis); },[crisis]);
+  useEffect(()=>{ save("sw_plan_team",team); },[team]);
+  useEffect(()=>{ save("sw_plan_tips",tips); },[tips]);
 
-  const toggle = k => setOpen(prev=>({...prev,[k]:!prev[k]}));
+  const toggle = k=>setOpen(prev=>({...prev,[k]:!prev[k]}));
+  const IS = {padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"15px",fontFamily:SANS,color:C.text,outline:"none",background:C.white};
 
-  const INPUT_STYLE = {padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"15px",fontFamily:SANS,color:C.text,outline:"none",background:C.white};
-
-  const SectionHeader = ({id,title,icon,accent,onAdd,addLabel}) => (
+  // L12 — section headers 48px
+  const SH = ({id,title,icon,accent,onAdd,addLabel})=>(
     <button onClick={()=>toggle(id)}
-      style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 16px",background:"transparent",border:"none",cursor:"pointer",minHeight:"56px"}}>
+      style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
+        padding:"12px 14px",background:"transparent",border:"none",cursor:"pointer",minHeight:"48px"}}>
       <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-        <span style={{fontSize:"22px"}}>{icon}</span>
-        <p style={{margin:0,fontSize:"17px",fontWeight:700,color:accent?C.red:C.navy,fontFamily:SERIF}}>{title}</p>
+        <span style={{fontSize:"20px"}}>{icon}</span>
+        <p style={{margin:0,fontSize:"16px",fontWeight:700,color:accent?C.red:C.navy,fontFamily:SERIF}}>{title}</p>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
         {open[id]&&onAdd&&(
           <button onClick={e=>{e.stopPropagation();onAdd();}}
-            style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"5px 10px",fontSize:"13px",color:C.primary,cursor:"pointer",fontFamily:SANS}}>
+            style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"4px 9px",fontSize:"12px",color:C.primary,cursor:"pointer",fontFamily:SANS}}>
             {addLabel||"+ Add"}
           </button>
         )}
-        <span style={{color:accent?C.red:C.textL,fontSize:"13px"}}>{open[id]?"▲":"▼"}</span>
+        <span style={{color:accent?C.red:C.textL,fontSize:"12px"}}>{open[id]?"▲":"▼"}</span>
       </div>
     </button>
   );
 
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"1.1rem",display:"flex",flexDirection:"column",gap:"1.1rem",WebkitOverflowScrolling:"touch"}}>
+    <div style={{flex:1,overflowY:"auto",padding:"1rem",display:"flex",flexDirection:"column",gap:"1rem",
+      WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,80px)"}}>
       <div>
-        <h2 style={{margin:"0 0 2px",fontSize:"20px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>My Care Plan</h2>
-        <p style={{margin:0,fontSize:"14px",color:C.textL}}>Your plan, always with you</p>
+        <h2 style={{margin:"0 0 2px",fontSize:"19px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>My Care Plan</h2>
+        <p style={{margin:0,fontSize:"13px",color:C.textL}}>Your plan, always with you</p>
       </div>
 
       {/* Crisis */}
-      <div style={{background:C.redL,borderRadius:"16px",border:`1.5px solid ${C.redB}`,overflow:"hidden"}}>
-        <SectionHeader id="crisis" title="If I'm in crisis" icon="🚨" accent
-          onAdd={()=>setAddingC(v=>!v)} addLabel={addingC?"Cancel":"+ Add contact"}/>
+      <div style={{background:C.redL,borderRadius:"14px",border:`1.5px solid ${C.redB}`,overflow:"hidden"}}>
+        <SH id="crisis" title="If I'm in crisis" icon="🚨" accent onAdd={()=>setAddingC(v=>!v)} addLabel={addingC?"Cancel":"+ Add contact"}/>
         {open["crisis"]&&(
           <div style={{borderTop:`1px solid ${C.redB}`}}>
             {addingC&&(
-              <div style={{padding:"12px 16px",background:C.redL,borderBottom:`1px solid ${C.redB}`,display:"flex",flexDirection:"column",gap:"8px"}}>
-                <input value={newC.label} onChange={e=>setNewC(p=>({...p,label:e.target.value}))} placeholder="Label e.g. My GP" style={INPUT_STYLE}/>
-                <textarea value={newC.val} onChange={e=>setNewC(p=>({...p,val:e.target.value}))} placeholder="Number or details"
-                  style={{...INPUT_STYLE,resize:"vertical",minHeight:"52px"}}/>
-                <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"15px",color:C.textM,cursor:"pointer"}}>
+              <div style={{padding:"10px 14px",background:C.redL,borderBottom:`1px solid ${C.redB}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+                <input value={newC.label} onChange={e=>setNewC(p=>({...p,label:e.target.value}))} placeholder="Label e.g. My GP" style={IS}/>
+                <textarea value={newC.val} onChange={e=>setNewC(p=>({...p,val:e.target.value}))} placeholder="Number or details" style={{...IS,resize:"vertical",minHeight:"52px"}}/>
+                <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"14px",color:C.textM,cursor:"pointer"}}>
                   <input type="checkbox" checked={newC.bold} onChange={e=>setNewC(p=>({...p,bold:e.target.checked}))} style={{width:"18px",height:"18px"}}/>
                   Highlight as important
                 </label>
                 <Btn onClick={()=>{if(!newC.label.trim()) return; setCrisis(prev=>[...prev,{id:uid(),...newC}]); setNewC({label:"",val:"",bold:false}); setAddingC(false);}} disabled={!newC.label.trim()}>Add contact</Btn>
               </div>
             )}
-            <ScrollBox maxHeight={380}>
+            <ScrollBox maxHeight={340}>
               {crisis.map(r=>(
                 <EditableRow key={r.id} label={r.label} val={r.val}
                   onSave={(l,v)=>setCrisis(prev=>prev.map(c=>c.id===r.id?{...c,label:l,val:v}:c))}
@@ -807,43 +1031,42 @@ function PlanTab() {
         )}
       </div>
 
-      {/* Meds (read-only mirror) */}
-      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <SectionHeader id="meds" title="My Medications" icon="💊"/>
+      {/* Meds mirror */}
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+        <SH id="meds" title="My Medications" icon="💊"/>
         {open["meds"]&&(
           <div style={{borderTop:`1px solid ${C.fogD}`}}>
-            <ScrollBox maxHeight={300}>
+            <ScrollBox maxHeight={240}>
               {load("sw_meds_config",DEFAULT_MEDS).map(m=>(
-                <div key={m.id} style={{padding:"12px 16px",borderTop:`1px solid ${C.fogD}`,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}}>
-                  <p style={{margin:0,fontSize:"14px",color:C.textL,fontWeight:600,flexShrink:0,minWidth:"75px"}}>{m.time}</p>
+                <div key={m.id} style={{padding:"9px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}}>
+                  <p style={{margin:0,fontSize:"13px",color:C.textL,fontWeight:600,flexShrink:0,minWidth:"70px"}}>{m.time}</p>
                   <div style={{flex:1}}>
-                    <p style={{margin:0,fontSize:"16px",color:C.text,fontWeight:600}}>{m.name} {m.dose}</p>
-                    {m.note&&<p style={{margin:0,fontSize:"14px",color:m.warn?C.amber:C.textL}}>{m.warn?"⚠️ ":""}{m.note}</p>}
+                    <p style={{margin:0,fontSize:"15px",color:C.text,fontWeight:600}}>{m.name} {m.dose}</p>
+                    {m.note&&<p style={{margin:0,fontSize:"13px",color:m.warn?C.amber:C.textL}}>{m.warn?"⚠️ ":""}{m.note}</p>}
                   </div>
                 </div>
               ))}
             </ScrollBox>
-            <div style={{padding:"10px 16px",background:C.fog,borderTop:`1px solid ${C.border}`}}>
-              <p style={{margin:0,fontSize:"13px",color:C.textL}}>Edit medications in the Today tab</p>
+            <div style={{padding:"8px 14px",background:C.fog,borderTop:`1px solid ${C.border}`}}>
+              <p style={{margin:0,fontSize:"12px",color:C.textL}}>Edit medications in the Today tab</p>
             </div>
           </div>
         )}
       </div>
 
       {/* Team */}
-      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <SectionHeader id="team" title="My Care Team" icon="👥"
-          onAdd={()=>setAddingT(v=>!v)} addLabel={addingT?"Cancel":"+ Add person"}/>
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+        <SH id="team" title="My Care Team" icon="👥" onAdd={()=>setAddingT(v=>!v)} addLabel={addingT?"Cancel":"+ Add person"}/>
         {open["team"]&&(
           <div style={{borderTop:`1px solid ${C.fogD}`}}>
             {addingT&&(
-              <div style={{padding:"12px 16px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
-                <input value={newT.role} onChange={e=>setNewT(p=>({...p,role:e.target.value}))} placeholder="Role e.g. Key Worker" style={INPUT_STYLE}/>
-                <input value={newT.people} onChange={e=>setNewT(p=>({...p,people:e.target.value}))} placeholder="Name or details" style={INPUT_STYLE}/>
+              <div style={{padding:"10px 14px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+                <input value={newT.role} onChange={e=>setNewT(p=>({...p,role:e.target.value}))} placeholder="Role e.g. Key Worker" style={IS}/>
+                <input value={newT.people} onChange={e=>setNewT(p=>({...p,people:e.target.value}))} placeholder="Name or details" style={IS}/>
                 <Btn onClick={()=>{if(!newT.role.trim()) return; setTeam(prev=>[...prev,{id:uid(),...newT}]); setNewT({role:"",people:""}); setAddingT(false);}} disabled={!newT.role.trim()}>Add person</Btn>
               </div>
             )}
-            <ScrollBox maxHeight={340}>
+            <ScrollBox maxHeight={300}>
               {team.map(r=>(
                 <EditableRow key={r.id} label={r.role} val={r.people}
                   onSave={(l,v)=>setTeam(prev=>prev.map(t=>t.id===r.id?{...t,role:l,people:v}:t))}
@@ -854,24 +1077,23 @@ function PlanTab() {
         )}
       </div>
 
-      {/* When things feel hard — editable tips */}
-      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <SectionHeader id="grounding" title="When things feel hard" icon="🌿"
-          onAdd={()=>setAddingG(v=>!v)} addLabel={addingG?"Cancel":"+ Add tip"}/>
+      {/* Grounding */}
+      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+        <SH id="grounding" title="When things feel hard" icon="🌿" onAdd={()=>setAddingG(v=>!v)} addLabel={addingG?"Cancel":"+ Add tip"}/>
         {open["grounding"]&&(
           <div style={{borderTop:`1px solid ${C.fogD}`}}>
             {addingG&&(
-              <div style={{padding:"12px 16px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+              <div style={{padding:"10px 14px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
                 <textarea value={newG} onChange={e=>setNewG(e.target.value)} placeholder="Add a new tip or reminder..."
-                  style={{...INPUT_STYLE,resize:"vertical",minHeight:"60px"}}/>
+                  style={{...IS,resize:"vertical",minHeight:"60px"}}/>
                 <Btn onClick={()=>{if(!newG.trim()) return; setTips(prev=>[...prev,{id:uid(),text:newG.trim()}]); setNewG(""); setAddingG(false);}} disabled={!newG.trim()}>Add tip</Btn>
               </div>
             )}
-            <ScrollBox maxHeight={360}>
+            <ScrollBox maxHeight={320}>
               {tips.map((tip,i)=>(
                 <TipRow key={tip.id} tip={tip} idx={i}
                   onSave={text=>setTips(prev=>prev.map(t=>t.id===tip.id?{...t,text}:t))}
-                  onDelete={()=>{ if(confirm_del("Remove this tip?")) setTips(prev=>prev.filter(t=>t.id!==tip.id)); }}/>
+                  onDelete={()=>setTips(prev=>prev.filter(t=>t.id!==tip.id))}/>
               ))}
             </ScrollBox>
           </div>
@@ -881,136 +1103,81 @@ function PlanTab() {
   );
 }
 
-function TipRow({ tip, idx, onSave, onDelete }) {
-  const [editing,setEditing] = useState(false);
-  const [val,    setVal]     = useState(tip.text);
-  if (editing) return (
-    <div style={{padding:"12px 16px",borderTop:`1px solid ${C.fogD}`,background:C.primaryL,display:"flex",flexDirection:"column",gap:"8px"}}>
-      <textarea value={val} onChange={e=>setVal(e.target.value)} style={{padding:"9px 11px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"15px",fontFamily:SANS,color:C.text,outline:"none",background:C.white,resize:"vertical",minHeight:"60px"}}/>
-      <div style={{display:"flex",gap:"8px"}}>
-        <Btn small onClick={()=>{onSave(val);setEditing(false);}}>Save</Btn>
-        <Btn small variant="ghost" onClick={()=>{setVal(tip.text);setEditing(false);}}>Cancel</Btn>
-        <Btn small variant="danger" onClick={onDelete}>Delete</Btn>
-      </div>
-    </div>
-  );
-  return (
-    <div style={{padding:"9px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",gap:"10px",alignItems:"flex-start"}}>
-      <span style={{fontSize:"14px",color:C.primary,fontWeight:700,flexShrink:0,minWidth:"20px",fontFamily:SANS}}>{idx+1}.</span>
-      <p style={{margin:0,flex:1,fontSize:"15px",color:C.text,lineHeight:1.6}}>{tip.text}</p>
-      <button onClick={()=>setEditing(true)}
-        style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"4px 8px",fontSize:"11px",color:C.textM,cursor:"pointer",fontFamily:SANS,flexShrink:0,minHeight:"28px"}}>
-        Edit
-      </button>
-    </div>
-  );
-}
-
 // ─── To Do ─────────────────────────────────────────────────────────────────────
 function TodoTab() {
   const dk = today();
-  const [todos,  setTodos]  = useState(()=>load(`sw_todos_${dk}`, DEFAULT_TODOS));
-  const [studio, setStudio] = useState(()=>load("sw_studio",      DEFAULT_STUDIO));
+  const [todos,  setTodos]  = useState(()=>load(`sw_todos_${dk}`,DEFAULT_TODOS));
+  const [studio, setStudio] = useState(()=>load("sw_studio",DEFAULT_STUDIO));
   const [input,  setInput]  = useState("");
   const [sInput, setSInput] = useState("");
+  // B1 — inline confirms replace window.confirm
+  const [resetPending, setResetPending] = useState(false);
+  const resetTimerRef = useRef(null);
+  useEffect(()=>()=>clearTimeout(resetTimerRef.current),[]);
 
-  useEffect(()=>{ save(`sw_todos_${dk}`, todos);  }, [todos,dk]);
-  useEffect(()=>{ save("sw_studio",      studio); }, [studio]);
+  useEffect(()=>{ save(`sw_todos_${dk}`,todos); },[todos,dk]);
+  useEffect(()=>{ save("sw_studio",studio); },[studio]);
 
   const toggle       = id => setTodos(prev=>prev.map(t=>t.id===id?{...t,done:!t.done}:t));
   const toggleStudio = id => setStudio(prev=>prev.map(t=>t.id===id?{...t,done:!t.done}:t));
-  const add          = () => { if(!input.trim()) return; setTodos(prev=>[...prev,{id:uid(),text:input.trim(),done:false,pinned:false,keepUntilDone:false}]); setInput(""); };
+  const add          = () => { if(!input.trim()) return; setTodos(prev=>[...prev,{id:uid(),text:input.trim(),done:false,pinned:false}]); setInput(""); };
   const addStudio    = () => { if(!sInput.trim()) return; setStudio(prev=>[...prev,{id:uid(),text:sInput.trim(),done:false}]); setSInput(""); };
-  const remove       = id => { if(confirm_del("Remove this task?")) setTodos(prev=>prev.filter(t=>t.id!==id)); };
+  const removeTask   = id => setTodos(prev=>prev.filter(t=>t.id!==id));
   const removeStudio = id => setStudio(prev=>prev.filter(t=>t.id!==id));
-  const reset        = () => { if(confirm_del("Reset today's list to defaults?")) setTodos(DEFAULT_TODOS); };
+  const reset        = () => {
+    if (resetPending) { clearTimeout(resetTimerRef.current); setResetPending(false); setTodos(DEFAULT_TODOS); }
+    else { setResetPending(true); resetTimerRef.current=setTimeout(()=>setResetPending(false),3000); }
+  };
 
   const doneCount = todos.filter(t=>t.done).length;
-  const pct = todos.length ? (doneCount/todos.length)*100 : 0;
+  const pct = todos.length?(doneCount/todos.length)*100:0;
   const pinned = todos.filter(t=>t.pinned);
   const custom  = todos.filter(t=>!t.pinned);
 
-  const TodoRow = ({t, removable, idx}) => (
-    <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"9px 14px",background:t.done?C.primaryL:"transparent",borderTop:idx>0?`1px solid ${C.fogD}`:"none",minHeight:"44px"}}>
-      <button onClick={()=>toggle(t.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
-        <Tick done={t.done} size={22}/>
-      </button>
-      <p style={{margin:0,flex:1,fontSize:"15px",color:t.done?C.textL:C.text,textDecoration:t.done?"line-through":"none",lineHeight:1.5}}>{t.text}</p>
-      {removable&&<button onClick={()=>remove(t.id)} style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"20px",padding:"0 4px",lineHeight:1,minWidth:"30px",textAlign:"center"}}>×</button>}
-    </div>
-  );
-
-  const StudioRow = ({t, idx}) => {
-    const [confirming, setConfirming] = useState(false);
-    return (
-      <div style={{display:"flex",alignItems:"center",gap:"10px",padding:"7px 12px",background:t.done?"#EAF6F0":"transparent",borderTop:idx>0?`1px solid ${C.fogD}`:"none",minHeight:"40px"}}>
-        <button onClick={()=>toggleStudio(t.id)} style={{background:"none",border:"none",cursor:"pointer",padding:0}}>
-          <div style={{width:"22px",height:"22px",borderRadius:"6px",border:`2px solid ${t.done?C.studio:C.border}`,background:t.done?C.studio:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all 0.15s"}}>
-            {t.done&&<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
-          </div>
-        </button>
-        <p style={{margin:0,flex:1,fontSize:"15px",color:t.done?C.textL:C.text,textDecoration:t.done?"line-through":"none",lineHeight:1.4}}>{t.text}</p>
-        {confirming ? (
-          <div style={{display:"flex",gap:"4px",alignItems:"center"}}>
-            <button onClick={()=>removeStudio(t.id)}
-              style={{background:C.red,border:"none",borderRadius:"6px",padding:"3px 8px",fontSize:"12px",fontWeight:700,color:"#fff",cursor:"pointer",fontFamily:SANS}}>
-              Delete
-            </button>
-            <button onClick={()=>setConfirming(false)}
-              style={{background:"transparent",border:`1px solid ${C.border}`,borderRadius:"6px",padding:"3px 7px",fontSize:"12px",color:C.textL,cursor:"pointer",fontFamily:SANS}}>
-              No
-            </button>
-          </div>
-        ) : (
-          <button onClick={()=>setConfirming(true)}
-            style={{background:"transparent",border:"none",cursor:"pointer",color:C.textL,fontSize:"20px",padding:"0 4px",lineHeight:1,minWidth:"28px",textAlign:"center"}}>×</button>
-        )}
-      </div>
-    );
-  };
-
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"0.85rem",display:"flex",flexDirection:"column",gap:"0.75rem",WebkitOverflowScrolling:"touch"}}>
+    <div style={{flex:1,overflowY:"auto",padding:"0.85rem",display:"flex",flexDirection:"column",gap:"0.75rem",
+      WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,80px)"}}>
 
-      {/* Daily header */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
         <div>
           <h2 style={{margin:0,fontSize:"18px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>Today's List</h2>
           <p style={{margin:0,fontSize:"13px",color:C.textL,fontWeight:500}}>{doneCount} of {todos.length} done</p>
         </div>
-        <Btn onClick={reset} variant="ghost" small>Reset day</Btn>
+        {/* B1 — inline confirm for reset */}
+        <button onClick={reset}
+          style={{padding:"7px 12px",background:resetPending?C.red:C.fogD,border:"none",borderRadius:"9px",
+            fontSize:"13px",fontWeight:600,color:resetPending?"#fff":C.text,cursor:"pointer",fontFamily:SANS,minHeight:"36px"}}>
+          {resetPending?"Confirm reset":"Reset day"}
+        </button>
       </div>
 
-      {/* Progress bar */}
       <div style={{background:C.fogD,borderRadius:"999px",height:"5px",overflow:"hidden"}}>
         <div style={{height:"100%",background:C.primary,width:`${pct}%`,borderRadius:"999px",transition:"width 0.4s"}}/>
       </div>
 
-      {/* Daily anchors */}
       {pinned.length>0&&(
         <div>
           <p style={{margin:"0 0 5px",fontSize:"12px",fontWeight:700,color:C.textL,textTransform:"uppercase",letterSpacing:"0.08em"}}>Daily anchors</p>
           <div style={{background:C.white,borderRadius:"12px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
             <ScrollBox maxHeight={240}>
-              {pinned.map((t,i)=><TodoRow key={t.id} t={t} removable={false} idx={i}/>)}
+              {/* B2 — TodoRow now defined outside, receives callbacks */}
+              {pinned.map((t,i)=><TodoRow key={t.id} t={t} removable={false} idx={i} onToggle={toggle} onRemove={removeTask}/>)}
             </ScrollBox>
           </div>
         </div>
       )}
 
-      {/* Custom tasks */}
       {custom.length>0&&(
         <div>
           <p style={{margin:"0 0 5px",fontSize:"12px",fontWeight:700,color:C.textL,textTransform:"uppercase",letterSpacing:"0.08em"}}>My tasks</p>
           <div style={{background:C.white,borderRadius:"12px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
             <ScrollBox maxHeight={240}>
-              {custom.map((t,i)=><TodoRow key={t.id} t={t} removable idx={i}/>)}
+              {custom.map((t,i)=><TodoRow key={t.id} t={t} removable idx={i} onToggle={toggle} onRemove={removeTask}/>)}
             </ScrollBox>
           </div>
         </div>
       )}
 
-      {/* Add custom task */}
       <div style={{display:"flex",gap:"8px"}}>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
           placeholder="Add something to your list..."
@@ -1018,39 +1185,38 @@ function TodoTab() {
         <Btn onClick={add} disabled={!input.trim()}>Add</Btn>
       </div>
 
-      {/* ─── Sunday Mills Studio ─────────────────────────────── */}
-      <div style={{background:C.studioL,borderRadius:"14px",border:`1.5px solid ${C.studioB}`,overflow:"visible",marginTop:"4px"}}>
-        <div style={{padding:"11px 14px",borderBottom:`1px solid ${C.studioB}`,display:"flex",alignItems:"center",gap:"10px"}}>
-          <span style={{fontSize:"20px"}}>🔧</span>
+      {/* Sunday Mills Studio — L9 wrench aligned, L10 buttons no-wrap */}
+      <div style={{background:C.studioL,borderRadius:"14px",border:`1.5px solid ${C.studioB}`,overflow:"visible",marginTop:"2px"}}>
+        <div style={{padding:"10px 13px",borderBottom:`1px solid ${C.studioB}`,display:"flex",alignItems:"center",gap:"10px"}}>
+          {/* L11 — wrench aligned center */}
+          <span style={{fontSize:"18px",alignSelf:"center"}}>🔧</span>
           <div style={{flex:1}}>
-            <p style={{margin:0,fontSize:"15px",fontWeight:700,color:C.studio,fontFamily:SERIF}}>Sunday Mills Studio</p>
-            <p style={{margin:0,fontSize:"11px",color:"#4A6278",fontWeight:500}}>Repairs & maintenance — stays until done</p>
+            <p style={{margin:0,fontSize:"14px",fontWeight:700,color:C.studio,fontFamily:SERIF}}>Sunday Mills Studio</p>
+            {/* L22 — subtitle 12px */}
+            <p style={{margin:0,fontSize:"12px",color:"#4A6278",fontWeight:500}}>Repairs & maintenance — stays until done</p>
           </div>
         </div>
-
-        <div style={{background:C.white,overflow:"hidden",borderRadius:"0 0 0 0"}}>
+        <div style={{background:C.white,overflow:"hidden"}}>
           <ScrollBox maxHeight={220}>
             {studio.length===0&&(
-              <div style={{padding:"14px 16px",textAlign:"center"}}>
+              <div style={{padding:"14px",textAlign:"center"}}>
                 <p style={{margin:0,fontSize:"14px",color:"#4A6278"}}>No repairs logged — add one below</p>
               </div>
             )}
-            {studio.map((t,i)=><StudioRow key={t.id} t={t} idx={i}/>)}
+            {/* B3 — StudioRow now defined outside */}
+            {studio.map((t,i)=><StudioRow key={t.id} t={t} idx={i} onToggle={toggleStudio} onRemove={removeStudio}/>)}
           </ScrollBox>
         </div>
-
-        {/* Add studio task */}
-        <div style={{padding:"10px 12px",borderTop:`1px solid ${C.studioB}`,display:"flex",gap:"8px"}}>
+        <div style={{padding:"9px 12px",borderTop:`1px solid ${C.studioB}`,display:"flex",gap:"8px"}}>
           <input value={sInput} onChange={e=>setSInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addStudio()}
             placeholder="Add a repair or job..."
-            style={{flex:1,padding:"9px 11px",border:`1.5px solid ${C.studioB}`,borderRadius:"9px",fontSize:"15px",color:C.text,fontFamily:SANS,outline:"none",background:C.white,minHeight:"42px"}}/>
+            style={{flex:1,padding:"8px 11px",border:`1.5px solid ${C.studioB}`,borderRadius:"9px",fontSize:"15px",color:C.text,fontFamily:SANS,outline:"none",background:C.white,minHeight:"40px"}}/>
           <button onClick={addStudio} disabled={!sInput.trim()}
-            style={{padding:"9px 16px",background:sInput.trim()?C.studio:C.fogD,border:"none",borderRadius:"9px",fontSize:"14px",fontWeight:600,color:sInput.trim()?"#fff":C.textL,cursor:sInput.trim()?"pointer":"default",fontFamily:SANS,minHeight:"42px"}}>
+            style={{padding:"8px 14px",background:sInput.trim()?C.studio:C.fogD,border:"none",borderRadius:"9px",fontSize:"14px",fontWeight:600,color:sInput.trim()?"#fff":C.textL,cursor:sInput.trim()?"pointer":"default",fontFamily:SANS,minHeight:"40px"}}>
             Add
           </button>
         </div>
       </div>
-
     </div>
   );
 }
@@ -1059,9 +1225,12 @@ function TodoTab() {
 function NotifBanner({ msg, onDismiss }) {
   if (!msg) return null;
   return (
-    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:999,background:C.amber,color:"#2C1A00",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between",fontFamily:SANS,fontSize:"16px",fontWeight:700,minHeight:"52px"}}>
+    <div style={{position:"fixed",top:0,left:0,right:0,zIndex:999,background:C.amber,color:"#2C1A00",
+      padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",
+      fontFamily:SANS,fontSize:"15px",fontWeight:700,
+      paddingTop:"calc(12px + env(safe-area-inset-top, 0px))"}}>
       <span>⏰ {msg}</span>
-      <button onClick={onDismiss} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:"24px",color:"#2C1A00",lineHeight:1,minWidth:"44px",textAlign:"center"}}>×</button>
+      <button onClick={onDismiss} style={{background:"transparent",border:"none",cursor:"pointer",fontSize:"22px",color:"#2C1A00",lineHeight:1,minWidth:"40px",textAlign:"center"}}>×</button>
     </div>
   );
 }
@@ -1076,71 +1245,82 @@ export default function App() {
   const lastNotif = useRef(load("sw_last_notif",""));
 
   useEffect(()=>{
-    const check = () => {
+    const check=()=>{
       const now=new Date(); const h=now.getHours(); const m=now.getMinutes();
       const key=`${h}:${m<10?"0"+m:m}`;
-      if (key===lastNotif.current) return;
+      if(key===lastNotif.current) return;
       const dk=today(); const md=load(`sw_meds_done_${dk}`,{});
-      if (h===8 &&m===0 &&!md["ari_am"])  { setNotif("Morning medication time — remember to eat first! 💊"); lastNotif.current=key; save("sw_last_notif",key); }
-      if (h===17&&m===0 &&!md["ari_pm"])  { setNotif("Evening medication time — Aripiprazole 10mg 💊");      lastNotif.current=key; save("sw_last_notif",key); }
-      if (h===10&&m===15)                  { setNotif("WHTT morning visit coming up — 10:30 to 13:30 🏥");    lastNotif.current=key; save("sw_last_notif",key); }
-      if (h===16&&m===45)                  { setNotif("WHTT evening visit coming up — 17:00 to 20:30 🏥");    lastNotif.current=key; save("sw_last_notif",key); }
+      if(h===8 &&m===0 &&!md["ari_am"]) {setNotif("Morning medication time — remember to eat first! 💊");lastNotif.current=key;save("sw_last_notif",key);}
+      if(h===17&&m===0 &&!md["ari_pm"]) {setNotif("Evening medication time — Aripiprazole 10mg 💊");lastNotif.current=key;save("sw_last_notif",key);}
+      if(h===10&&m===15)                 {setNotif("WHTT morning visit coming up — 10:30 to 13:30 🏥");lastNotif.current=key;save("sw_last_notif",key);}
+      if(h===16&&m===45)                 {setNotif("WHTT evening visit coming up — 17:00 to 20:30 🏥");lastNotif.current=key;save("sw_last_notif",key);}
     };
     check();
-    const iv = setInterval(check, 30000);
-    return () => clearInterval(iv);
+    const iv=setInterval(check,30000);
+    return()=>clearInterval(iv);
   },[]);
 
   if (!entered) return <Splash onEnter={()=>setEntered(true)}/>;
 
-  const TABS = [
-    { id:"chat",  label:"Chat",    icon:"💬" },
-    { id:"today", label:"Today",   icon:"☀️", badge:overdueBadge },
-    { id:"diary", label:"Diary",   icon:"📖" },
-    { id:"plan",  label:"My Plan", icon:"📋" },
-    { id:"todo",  label:"To Do",   icon:"✓"  },
+  const TABS=[
+    {id:"chat",  label:"Chat",    icon:"💬"},
+    {id:"today", label:"Today",   icon:"☀️", badge:overdueBadge},
+    {id:"diary", label:"Diary",   icon:"📖"},
+    {id:"plan",  label:"My Plan", icon:"📋"},
+    {id:"todo",  label:"To Do",   icon:"✓"},
   ];
 
   return (
     <div style={{display:"flex",flexDirection:"column",height:"100vh",background:C.fog,fontFamily:SANS,overflow:"hidden"}}>
       <NotifBanner msg={notif} onDismiss={()=>setNotif(null)}/>
 
-      {/* Header */}
-      <div style={{background:C.white,borderBottom:`1.5px solid ${C.border}`,padding:"10px 16px",paddingTop:notif?"56px":"env(safe-area-inset-top, 10px)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,zIndex:2}}>
-        <div style={{display:"flex",alignItems:"center",gap:"12px"}}>
-          <div style={{width:"40px",height:"40px",borderRadius:"12px",background:C.primaryL,border:`1.5px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <GeishaIcon size={30}/>
+      {/* Header — L14 larger icon, B10 safe area */}
+      <div style={{background:C.white,borderBottom:`1.5px solid ${C.border}`,
+        padding:"8px 14px",
+        paddingTop:notif?"calc(52px + env(safe-area-inset-top, 0px))":"env(safe-area-inset-top, 10px)",
+        display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,zIndex:2,
+        transition:"padding-top 0.2s"}}>
+        <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+          {/* L14 — 44×44 container, size 32 */}
+          <div style={{width:"44px",height:"44px",borderRadius:"12px",background:C.primaryL,
+            border:`1.5px solid ${C.primaryB}`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <GeishaIcon size={32}/>
           </div>
           <div>
-            <p style={{margin:0,fontSize:"17px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>SolAraWeb</p>
-            <p style={{margin:0,fontSize:"12px",color:C.textL}}>Wendy's Safe Space</p>
+            <p style={{margin:0,fontSize:"16px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>SolAraWeb</p>
+            <p style={{margin:0,fontSize:"11px",color:C.textL}}>Wendy's Safe Space</p>
           </div>
         </div>
+        {/* L20 — crisis panel reduced padding */}
         <button onClick={()=>setShowCrisis(v=>!v)}
-          style={{fontSize:"13px",fontWeight:700,padding:"9px 14px",borderRadius:"10px",border:`1.5px solid ${C.amberB}`,background:showCrisis?C.amberB:C.amberL,color:C.amber,cursor:"pointer",fontFamily:SANS,minHeight:"44px"}}>
+          style={{fontSize:"13px",fontWeight:700,padding:"8px 13px",borderRadius:"10px",
+            border:`1.5px solid ${C.amberB}`,background:showCrisis?C.amberB:C.amberL,
+            color:C.amber,cursor:"pointer",fontFamily:SANS,minHeight:"44px"}}>
           Crisis
         </button>
       </div>
 
       {/* Crisis panel */}
       {showCrisis&&(
-        <div style={{background:C.amberL,borderBottom:`1.5px solid ${C.amberB}`,padding:"12px 16px",flexShrink:0,zIndex:2,maxHeight:"260px",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
-          <p style={{margin:"0 0 10px",fontSize:"12px",fontWeight:700,color:C.amber,letterSpacing:"0.08em",textTransform:"uppercase"}}>Immediate help</p>
-          <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-            <div style={{background:C.white,border:`1.5px solid ${C.amberB}`,borderRadius:"10px",padding:"10px 14px"}}>
-              <p style={{margin:"0 0 3px",fontSize:"13px",color:C.amber,fontWeight:700}}>HOME TREATMENT TEAM (WHTT)</p>
-              <p style={{margin:0,fontSize:"18px",color:"#3D2000",fontWeight:700,lineHeight:1.6}}>0203 513 6605</p>
-              <p style={{margin:0,fontSize:"18px",color:"#3D2000",fontWeight:700}}>0203 513 6681</p>
-              <p style={{margin:"4px 0 0",fontSize:"18px",color:C.red,fontWeight:700}}>0787 572 7262</p>
+        <div style={{background:C.amberL,borderBottom:`1.5px solid ${C.amberB}`,
+          padding:"8px 12px",flexShrink:0,zIndex:2,maxHeight:"240px",
+          overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
+          <p style={{margin:"0 0 8px",fontSize:"11px",fontWeight:700,color:C.amber,letterSpacing:"0.08em",textTransform:"uppercase"}}>Immediate help</p>
+          <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
+            <div style={{background:C.white,border:`1.5px solid ${C.amberB}`,borderRadius:"10px",padding:"8px 12px"}}>
+              <p style={{margin:"0 0 2px",fontSize:"12px",color:C.amber,fontWeight:700}}>HOME TREATMENT TEAM (WHTT)</p>
+              <p style={{margin:0,fontSize:"17px",color:"#3D2000",fontWeight:700,lineHeight:1.5}}>0203 513 6605</p>
+              <p style={{margin:0,fontSize:"17px",color:"#3D2000",fontWeight:700}}>0203 513 6681</p>
+              <p style={{margin:"3px 0 0",fontSize:"17px",color:C.red,fontWeight:700}}>0787 572 7262</p>
             </div>
-            <div style={{display:"flex",gap:"8px"}}>
-              <div style={{flex:1,background:C.white,border:`1.5px solid ${C.amberB}`,borderRadius:"10px",padding:"10px 14px"}}>
-                <p style={{margin:"0 0 3px",fontSize:"13px",color:C.amber,fontWeight:700}}>JAMIE</p>
-                <p style={{margin:0,fontSize:"18px",color:"#3D2000",fontWeight:700}}>0735 61 30 140</p>
+            <div style={{display:"flex",gap:"7px"}}>
+              <div style={{flex:1,background:C.white,border:`1.5px solid ${C.amberB}`,borderRadius:"10px",padding:"8px 12px"}}>
+                <p style={{margin:"0 0 2px",fontSize:"12px",color:C.amber,fontWeight:700}}>JAMIE</p>
+                <p style={{margin:0,fontSize:"17px",color:"#3D2000",fontWeight:700}}>0735 61 30 140</p>
               </div>
-              <div style={{flex:1,background:C.white,border:`1.5px solid ${C.amberB}`,borderRadius:"10px",padding:"10px 14px"}}>
-                <p style={{margin:"0 0 3px",fontSize:"13px",color:C.amber,fontWeight:700}}>EMAD</p>
-                <p style={{margin:0,fontSize:"17px",color:"#3D2000",fontWeight:700}}>+49 177 77 90 353</p>
+              <div style={{flex:1,background:C.white,border:`1.5px solid ${C.amberB}`,borderRadius:"10px",padding:"8px 12px"}}>
+                <p style={{margin:"0 0 2px",fontSize:"12px",color:C.amber,fontWeight:700}}>EMAD</p>
+                <p style={{margin:0,fontSize:"16px",color:"#3D2000",fontWeight:700}}>+49 177 77 90 353</p>
               </div>
             </div>
           </div>
@@ -1156,21 +1336,33 @@ export default function App() {
         {tab==="todo" &&<TodoTab/>}
       </div>
 
-      {/* Bottom nav */}
-      <div style={{background:C.white,borderTop:`1.5px solid ${C.border}`,display:"flex",flexShrink:0,zIndex:2,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+      {/* Bottom nav — L15 62px, L16 icon containers, labels 12px */}
+      <div style={{background:C.white,borderTop:`1.5px solid ${C.border}`,display:"flex",flexShrink:0,zIndex:2,
+        paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
         {TABS.map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{flex:1,padding:"10px 4px 9px",background:"transparent",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:"4px",borderTop:`3px solid ${tab===t.id?C.primary:"transparent"}`,transition:"border-color 0.15s",minHeight:"58px",position:"relative"}}>
-            <span style={{fontSize:"22px",lineHeight:1}}>{t.icon}</span>
+            style={{flex:1,padding:"8px 4px 7px",background:"transparent",border:"none",cursor:"pointer",
+              display:"flex",flexDirection:"column",alignItems:"center",gap:"3px",
+              borderTop:`3px solid ${tab===t.id?C.primary:"transparent"}`,
+              transition:"border-color 0.15s",minHeight:"62px",position:"relative"}}>
+            {/* L16 — fixed 24×24 emoji container */}
+            <div style={{width:"24px",height:"24px",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",lineHeight:1}}>
+              {t.icon}
+            </div>
             {t.badge&&(
-              <span style={{position:"absolute",top:"8px",right:"calc(50% - 14px)",width:"9px",height:"9px",borderRadius:"50%",background:C.red,border:`2px solid ${C.white}`}}/>
+              <span style={{position:"absolute",top:"7px",right:"calc(50% - 15px)",width:"8px",height:"8px",
+                borderRadius:"50%",background:C.red,border:`2px solid ${C.white}`}}/>
             )}
-            <span style={{fontSize:"11px",fontWeight:tab===t.id?700:500,color:tab===t.id?C.primary:C.textL}}>{t.label}</span>
+            <span style={{fontSize:"12px",fontWeight:tab===t.id?700:500,color:tab===t.id?C.primary:C.textL}}>{t.label}</span>
           </button>
         ))}
       </div>
 
-      <style>{`@keyframes pulse{0%,80%,100%{opacity:.25;transform:scale(.75)}40%{opacity:1;transform:scale(1)}}@keyframes fadeOut{0%{opacity:1}100%{opacity:0}}*{-webkit-tap-highlight-color:transparent}`}</style>
+      <style>{`
+        @keyframes pulse{0%,80%,100%{opacity:.25;transform:scale(.75)}40%{opacity:1;transform:scale(1)}}
+        @keyframes fadeOut{0%{opacity:1}100%{opacity:0}}
+        *{-webkit-tap-highlight-color:transparent}
+      `}</style>
     </div>
   );
 }
