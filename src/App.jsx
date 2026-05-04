@@ -1078,43 +1078,55 @@ function PlanTab() {
   const toggle=k=>setOpen(prev=>({...prev,[k]:!prev[k]}));
   const IS={padding:"10px 12px",border:`1.5px solid ${C.border}`,borderRadius:"8px",fontSize:"15px",fontFamily:SANS,color:C.text,outline:"none",background:C.white};
 
-  const SH=({id,title,icon,accent,onAdd,addLabel})=>(
-    <button onClick={()=>toggle(id)}
-      style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",
-        padding:"12px 14px",background:"transparent",border:"none",cursor:"pointer",minHeight:"48px"}}>
+  // Unified section header — lives inside the single card
+  const SectionHeader = ({id,title,icon,accent,onAdd,addLabel})=>(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+      padding:"12px 14px",cursor:"pointer",
+      background:accent?(open[id]?C.redL:"#FEF5F5"):open[id]?C.fogD:C.white,
+      borderTop:`1px solid ${accent?C.redB:C.border}`,
+      transition:"background 0.15s"}}
+      onClick={()=>toggle(id)}>
       <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-        <span style={{fontSize:"20px"}}>{icon}</span>
-        <p style={{margin:0,fontSize:"16px",fontWeight:700,color:accent?C.red:C.navy,fontFamily:SERIF}}>{title}</p>
+        <span style={{fontSize:"18px"}}>{icon}</span>
+        <p style={{margin:0,fontSize:"15px",fontWeight:700,color:accent?C.red:C.navy,fontFamily:SERIF}}>{title}</p>
       </div>
       <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
         {open[id]&&onAdd&&(
           <button onClick={e=>{e.stopPropagation();onAdd();}}
-            style={{background:"transparent",border:`1.5px solid ${C.border}`,borderRadius:"7px",padding:"4px 9px",fontSize:"12px",color:C.primary,cursor:"pointer",fontFamily:SANS}}>
+            style={{background:"transparent",border:`1.5px solid ${accent?C.redB:C.border}`,borderRadius:"7px",
+              padding:"4px 9px",fontSize:"12px",color:accent?C.red:C.primary,cursor:"pointer",fontFamily:SANS}}>
             {addLabel||"+ Add"}
           </button>
         )}
-        <span style={{color:accent?C.red:C.textL,fontSize:"12px"}}>{open[id]?"▲":"▼"}</span>
+        <span style={{color:accent?C.red:C.textL,fontSize:"11px",fontWeight:600}}>
+          {open[id]?"▲":"▼"}
+        </span>
       </div>
-    </button>
+    </div>
   );
 
   return (
-    <div style={{flex:1,overflowY:"auto",padding:"1rem",display:"flex",flexDirection:"column",gap:"1rem",
+    <div style={{flex:1,overflowY:"auto",padding:"1rem",display:"flex",flexDirection:"column",gap:"0.75rem",
       WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,80px)"}}>
+
       <div>
         <h2 style={{margin:"0 0 2px",fontSize:"19px",fontWeight:700,color:C.navy,fontFamily:SERIF}}>My Care Plan</h2>
         <p style={{margin:0,fontSize:"13px",color:C.textL}}>Your plan, always with you</p>
       </div>
 
-      {/* Crisis */}
-      <div style={{background:C.redL,borderRadius:"14px",border:`1.5px solid ${C.redB}`,overflow:"hidden"}}>
-        <SH id="crisis" title="If I'm in crisis" icon="🚨" accent onAdd={()=>setAddingC(v=>!v)} addLabel={addingC?"Cancel":"+ Add contact"}/>
+      {/* ── Single unified card ── */}
+      <div style={{background:C.white,borderRadius:"16px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
+
+        {/* ── Crisis ── */}
+        <SectionHeader id="crisis" title="If I'm in crisis" icon="🚨" accent
+          onAdd={()=>setAddingC(v=>!v)} addLabel={addingC?"Cancel":"+ Add contact"}/>
         {open["crisis"]&&(
-          <div style={{borderTop:`1px solid ${C.redB}`}}>
+          <>
             {addingC&&(
-              <div style={{padding:"10px 14px",background:C.redL,borderBottom:`1px solid ${C.redB}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+              <div style={{padding:"10px 14px",background:C.redL,borderTop:`1px solid ${C.redB}`,display:"flex",flexDirection:"column",gap:"8px"}}>
                 <input value={newC.label} onChange={e=>setNewC(p=>({...p,label:e.target.value}))} placeholder="Label e.g. My GP" style={IS}/>
-                <textarea value={newC.val} onChange={e=>setNewC(p=>({...p,val:e.target.value}))} placeholder="Number or details" style={{...IS,resize:"vertical",minHeight:"52px"}}/>
+                <textarea value={newC.val} onChange={e=>setNewC(p=>({...p,val:e.target.value}))} placeholder="Number or details"
+                  style={{...IS,resize:"vertical",minHeight:"52px"}}/>
                 <label style={{display:"flex",alignItems:"center",gap:"8px",fontSize:"14px",color:C.textM,cursor:"pointer"}}>
                   <input type="checkbox" checked={newC.bold} onChange={e=>setNewC(p=>({...p,bold:e.target.checked}))} style={{width:"18px",height:"18px"}}/>
                   Highlight as important
@@ -1122,92 +1134,79 @@ function PlanTab() {
                 <Btn onClick={()=>{if(!newC.label.trim()) return; setCrisis(prev=>[...prev,{id:uid(),...newC}]); setNewC({label:"",val:"",bold:false}); setAddingC(false);}} disabled={!newC.label.trim()}>Add contact</Btn>
               </div>
             )}
-            <div style={{position:"relative"}}>
-              <ScrollBox maxHeight={300}>
-                {crisis.map(r=>(
-                  <EditableRow key={r.id} label={r.label} val={r.val}
-                    onSave={(l,v)=>setCrisis(prev=>prev.map(c=>c.id===r.id?{...c,label:l,val:v}:c))}
-                    onDelete={()=>setCrisis(prev=>prev.filter(c=>c.id!==r.id))}
-                    placeholder="Phone number or details"/>
-                ))}
-              </ScrollBox>
-              {crisis.length>3&&(
-                <div style={{position:"absolute",bottom:0,left:0,right:0,height:"32px",
-                  background:"linear-gradient(transparent,rgba(253,237,236,0.95))",pointerEvents:"none"}}/>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Meds mirror */}
-      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <SH id="meds" title="My Medications" icon="💊"/>
-        {open["meds"]&&(
-          <div style={{borderTop:`1px solid ${C.fogD}`}}>
-            <ScrollBox maxHeight={200}>
-              {load("sw_meds_config",DEFAULT_MEDS).map(m=>(
-                <div key={m.id} style={{padding:"9px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}}>
-                  <p style={{margin:0,fontSize:"13px",color:C.textL,fontWeight:600,flexShrink:0,minWidth:"70px"}}>{m.time}</p>
-                  <div style={{flex:1}}>
-                    <p style={{margin:0,fontSize:"15px",color:C.text,fontWeight:600}}>{m.name} {m.dose}</p>
-                    {m.note&&<p style={{margin:0,fontSize:"13px",color:m.warn?C.amber:C.textL}}>{m.warn?"⚠️ ":""}{m.note}</p>}
-                  </div>
-                </div>
+            <div style={{background:C.redL}}>
+              {crisis.map(r=>(
+                <EditableRow key={r.id} label={r.label} val={r.val}
+                  onSave={(l,v)=>setCrisis(prev=>prev.map(c=>c.id===r.id?{...c,label:l,val:v}:c))}
+                  onDelete={()=>setCrisis(prev=>prev.filter(c=>c.id!==r.id))}
+                  placeholder="Phone number or details"/>
               ))}
-            </ScrollBox>
-            <div style={{padding:"8px 14px",background:C.fog,borderTop:`1px solid ${C.border}`}}>
+            </div>
+          </>
+        )}
+
+        {/* ── Medications mirror ── */}
+        <SectionHeader id="meds" title="My Medications" icon="💊"/>
+        {open["meds"]&&(
+          <>
+            {load("sw_meds_config",DEFAULT_MEDS).map(m=>(
+              <div key={m.id} style={{padding:"9px 14px",borderTop:`1px solid ${C.fogD}`,display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:"10px"}}>
+                <p style={{margin:0,fontSize:"12px",color:C.textL,fontWeight:600,flexShrink:0,minWidth:"70px"}}>{m.time}</p>
+                <div style={{flex:1}}>
+                  <p style={{margin:0,fontSize:"15px",color:C.text,fontWeight:600}}>{m.name} {m.dose}</p>
+                  {m.note&&<p style={{margin:0,fontSize:"12px",color:m.warn?C.amber:C.textL}}>{m.warn?"⚠️ ":""}{m.note}</p>}
+                </div>
+              </div>
+            ))}
+            <div style={{padding:"8px 14px",background:C.fog,borderTop:`1px solid ${C.fogD}`}}>
               <p style={{margin:0,fontSize:"12px",color:C.textL}}>Edit medications in the Today tab</p>
             </div>
-          </div>
+          </>
         )}
-      </div>
 
-      {/* Team */}
-      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <SH id="team" title="My Care Team" icon="👥" onAdd={()=>setAddingT(v=>!v)} addLabel={addingT?"Cancel":"+ Add person"}/>
+        {/* ── Care Team ── */}
+        <SectionHeader id="team" title="My Care Team" icon="👥"
+          onAdd={()=>setAddingT(v=>!v)} addLabel={addingT?"Cancel":"+ Add person"}/>
         {open["team"]&&(
-          <div style={{borderTop:`1px solid ${C.fogD}`}}>
+          <>
             {addingT&&(
-              <div style={{padding:"10px 14px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+              <div style={{padding:"10px 14px",background:C.primaryL,borderTop:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
                 <input value={newT.role} onChange={e=>setNewT(p=>({...p,role:e.target.value}))} placeholder="Role e.g. Key Worker" style={IS}/>
                 <input value={newT.people} onChange={e=>setNewT(p=>({...p,people:e.target.value}))} placeholder="Name or details" style={IS}/>
                 <Btn onClick={()=>{if(!newT.role.trim()) return; setTeam(prev=>[...prev,{id:uid(),...newT}]); setNewT({role:"",people:""}); setAddingT(false);}} disabled={!newT.role.trim()}>Add person</Btn>
               </div>
             )}
-            <ScrollBox maxHeight={300}>
-              {team.map(r=>(
-                <EditableRow key={r.id} label={r.role} val={r.people}
-                  onSave={(l,v)=>setTeam(prev=>prev.map(t=>t.id===r.id?{...t,role:l,people:v}:t))}
-                  onDelete={()=>setTeam(prev=>prev.filter(t=>t.id!==r.id))}/>
-              ))}
-            </ScrollBox>
-          </div>
+            {team.map(r=>(
+              <EditableRow key={r.id} label={r.role} val={r.people}
+                onSave={(l,v)=>setTeam(prev=>prev.map(t=>t.id===r.id?{...t,role:l,people:v}:t))}
+                onDelete={()=>setTeam(prev=>prev.filter(t=>t.id!==r.id))}/>
+            ))}
+          </>
         )}
-      </div>
 
-      {/* Grounding */}
-      <div style={{background:C.white,borderRadius:"14px",border:`1.5px solid ${C.border}`,overflow:"hidden"}}>
-        <SH id="grounding" title="When things feel hard" icon="🌿" onAdd={()=>setAddingG(v=>!v)} addLabel={addingG?"Cancel":"+ Add tip"}/>
+        {/* ── When things feel hard ── */}
+        <SectionHeader id="grounding" title="When things feel hard" icon="🌿"
+          onAdd={()=>setAddingG(v=>!v)} addLabel={addingG?"Cancel":"+ Add tip"}/>
         {open["grounding"]&&(
-          <div style={{borderTop:`1px solid ${C.fogD}`}}>
+          <>
             {addingG&&(
-              <div style={{padding:"10px 14px",background:C.primaryL,borderBottom:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
+              <div style={{padding:"10px 14px",background:C.primaryL,borderTop:`1px solid ${C.border}`,display:"flex",flexDirection:"column",gap:"8px"}}>
                 <textarea value={newG} onChange={e=>setNewG(e.target.value)} placeholder="Add a new tip or reminder..."
                   style={{...IS,resize:"vertical",minHeight:"60px"}}/>
                 <Btn onClick={()=>{if(!newG.trim()) return; setTips(prev=>[...prev,{id:uid(),text:newG.trim()}]); setNewG(""); setAddingG(false);}} disabled={!newG.trim()}>Add tip</Btn>
               </div>
             )}
-            <ScrollBox maxHeight={300}>
-              {tips.map((tip,i)=>(
-                <TipRow key={tip.id} tip={tip} idx={i}
-                  onSave={text=>setTips(prev=>prev.map(t=>t.id===tip.id?{...t,text}:t))}
-                  onDelete={()=>setTips(prev=>prev.filter(t=>t.id!==tip.id))}/>
-              ))}
-            </ScrollBox>
-          </div>
+            {tips.map((tip,i)=>(
+              <TipRow key={tip.id} tip={tip} idx={i}
+                onSave={text=>setTips(prev=>prev.map(t=>t.id===tip.id?{...t,text}:t))}
+                onDelete={()=>setTips(prev=>prev.filter(t=>t.id!==tip.id))}/>
+            ))}
+          </>
         )}
+
       </div>
+      {/* ── End unified card ── */}
+
     </div>
   );
 }
